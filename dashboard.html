@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roblox Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07080d;
+  --surface: #0e1018;
+  --card: #13151f;
+  --border: #1e2135;
+  --accent: #5b8cff;
+  --accent2: #ff5b8c;
+  --accent3: #5bffb8;
+  --accent4: #ffc85b;
+  --purple: #b05bff;
+  --cyan: #5be0ff;
+  --text: #e8eaf6;
+  --muted: #6b7094;
+  --glow: rgba(91,140,255,0.15);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── UPLOAD SCREEN ────────────────────────────────── */
+#upload-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  position: relative;
+}
+
+/* animated grid background */
+#upload-screen::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* radial glow in center */
+#upload-screen::after {
+  content: '';
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(91,140,255,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.upload-logo {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 48px;
+  position: relative;
+  z-index: 1;
+}
+
+.upload-logo span { color: var(--accent); }
+
+.upload-heading {
+  font-size: clamp(36px, 6vw, 64px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-align: center;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(135deg, #ffffff 0%, #8aa8ff 60%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.upload-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 56px;
+  line-height: 1.7;
+  max-width: 480px;
+  position: relative;
+  z-index: 1;
+}
+
+.drop-zone {
+  width: 100%;
+  max-width: 520px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 56px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  position: relative;
+  z-index: 1;
+  background: var(--card);
+}
+
+.drop-zone:hover, .drop-zone.dragging {
+  border-color: var(--accent);
+  background: rgba(91,140,255,0.05);
+  box-shadow: 0 0 40px var(--glow);
+}
+
+.drop-icon {
+  width: 56px; height: 56px;
+  margin: 0 auto 20px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--muted);
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.drop-zone:hover .drop-icon, .drop-zone.dragging .drop-icon {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.drop-text-main {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.drop-text-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.drop-text-sub span {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#file-input { display: none; }
+
+/* Steps */
+.steps {
+  display: flex;
+  gap: 32px;
+  margin-top: 48px;
+  flex-wrap: wrap;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 140px;
+  max-width: 160px;
+}
+
+.step-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(91,140,255,0.1);
+  border: 1px solid rgba(91,140,255,0.2);
+  border-radius: 4px;
+  padding: 3px 7px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── PROGRESS ─────────────────────────────────────── */
+#progress-screen {
+  display: none;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  padding: 40px;
+}
+
+.progress-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.progress-bar-wrap {
+  width: 360px;
+  max-width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent3));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.progress-log {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── DASHBOARD SCREEN ──────────────────────────────── */
+#dashboard-screen { display: none; }
+
+header {
+  padding: 32px 48px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: linear-gradient(180deg, rgba(91,140,255,0.04) 0%, transparent 100%);
+}
+
+.header-left h1 {
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #fff 40%, var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+.header-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.btn-reset {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-reset:hover { color: var(--text); border-color: var(--muted); }
+
+/* exp selector */
+.exp-bar {
+  padding: 0 48px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  background: var(--surface);
+}
+.exp-bar::-webkit-scrollbar { height: 0; }
+
+.exp-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 12px 0;
+  margin-right: 4px;
+}
+
+.exp-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.exp-btn:hover { color: var(--text); border-color: var(--muted); }
+.exp-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(91,140,255,0.08); }
+
+.nav {
+  display: flex;
+  gap: 0;
+  padding: 0 48px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+  overflow-x: auto;
+}
+.nav::-webkit-scrollbar { height: 0; }
+
+.tab {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 18px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+  background: none;
+  border-top: none; border-left: none; border-right: none;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* pages */
+.page { display: none; padding: 36px 48px 80px; animation: fadeUp 0.3s ease; }
+.page.active { display: block; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+/* stat row */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 32px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; position: relative; overflow: hidden; }
+.stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+.stat-card.blue::before { background: var(--accent); }
+.stat-card.pink::before { background: var(--accent2); }
+.stat-card.green::before { background: var(--accent3); }
+.stat-card.yellow::before { background: var(--accent4); }
+.stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+.stat-value { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+.stat-card.blue .stat-value { color: var(--accent); }
+.stat-card.pink .stat-value { color: var(--accent2); }
+.stat-card.green .stat-value { color: var(--accent3); }
+.stat-card.yellow .stat-value { color: var(--accent4); }
+.stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+/* chart grid */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; margin-bottom: 24px; }
+.chart-grid.full { grid-template-columns: 1fr; }
+.chart-grid.thirds { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 22px; }
+.chart-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+.chart-desc { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 18px; letter-spacing: 0.05em; }
+.chart-wrap { position: relative; height: 210px; }
+.chart-wrap.tall { height: 270px; }
+
+/* section header */
+.sec { display: flex; align-items: center; gap: 12px; margin: 8px 0 20px; }
+.sec-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; white-space: nowrap; }
+.sec-line { flex: 1; height: 1px; background: var(--border); }
+
+/* metric mini cards */
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.metric-mini { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+.metric-mini:hover, .metric-mini.selected { border-color: var(--accent); box-shadow: 0 0 20px var(--glow); }
+.metric-mini-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 5px; }
+.metric-mini-val { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+.metric-mini-peak { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+/* donuts */
+.donut-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
+.donut-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 22px; display: flex; flex-direction: column; align-items: center; }
+.donut-wrap { position: relative; height: 150px; width: 150px; }
+.donut-labels { margin-top: 14px; width: 100%; display: flex; flex-direction: column; gap: 5px; }
+.donut-row-item { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+
+/* empty state */
+.empty-state { text-align: center; padding: 60px 20px; }
+.empty-state p { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+
+@media (max-width: 600px) {
+  header, .nav, .exp-bar, .page { padding-left: 20px; padding-right: 20px; }
+  .chart-grid, .chart-grid.thirds { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ UPLOAD SCREEN ══════════════ -->
+<div id="upload-screen">
+  <div class="upload-logo">Roblox &nbsp;<span>//</span>&nbsp; Analytics Dashboard</div>
+  <h1 class="upload-heading">Drop your data.<br>See your game.</h1>
+  <p class="upload-sub">Upload your compressed roblox-exports zip and this page will process and visualize everything in your browser. Nothing is sent anywhere.</p>
+
+  <div class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input" accept=".zip">
+    <div class="drop-icon">📦</div>
+    <div class="drop-text-main">Drop roblox-exports.zip here</div>
+    <div class="drop-text-sub">or <span onclick="document.getElementById('file-input').click()">browse to select file</span></div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-text">Download CSVs from Roblox Creator Dashboard using the browser extension</div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-text">Compress your roblox-exports folder into a .zip file</div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-text">Drop the zip here — charts appear instantly, nothing is stored</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ PROGRESS SCREEN ══════════════ -->
+<div id="progress-screen">
+  <div class="progress-title">Processing your data…</div>
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-fill"></div></div>
+  <div class="progress-log" id="progress-log">Reading zip file…</div>
+</div>
+
+<!-- ══════════════ DASHBOARD SCREEN ══════════════ -->
+<div id="dashboard-screen">
+  <header>
+    <div class="header-left">
+      <h1 id="dash-title">Analytics Dashboard</h1>
+      <div class="header-meta" id="dash-meta">—</div>
+    </div>
+    <button class="btn-reset" onclick="resetToUpload()">↩ Upload New File</button>
+  </header>
+
+  <div class="exp-bar" id="exp-bar">
+    <div class="exp-label">Experience:</div>
+  </div>
+
+  <nav class="nav" id="main-nav">
+    <button class="tab active" onclick="showPage('overview')">Overview</button>
+    <button class="tab" onclick="showPage('combat')">Combat</button>
+    <button class="tab" onclick="showPage('farming')">Farming & Resources</button>
+    <button class="tab" onclick="showPage('players')">Players & Retention</button>
+    <button class="tab" onclick="showPage('cow')">Cow Pressure</button>
+  </nav>
+
+  <div id="page-overview" class="page active"></div>
+  <div id="page-combat" class="page"></div>
+  <div id="page-farming" class="page"></div>
+  <div id="page-players" class="page"></div>
+  <div id="page-cow" class="page"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// UPLOAD & DRAG/DROP
+// ══════════════════════════════════════════════════════════════
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragging'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.zip')) handleZip(file);
+  else alert('Please drop a .zip file.');
+});
+dropZone.addEventListener('click', e => {
+  if (e.target.tagName !== 'SPAN') fileInput.click();
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleZip(fileInput.files[0]);
+});
+
+function setProgress(pct, msg) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-log').textContent = msg;
+}
+
+function resetToUpload() {
+  document.getElementById('upload-screen').style.display = 'flex';
+  document.getElementById('progress-screen').style.display = 'none';
+  document.getElementById('dashboard-screen').style.display = 'none';
+  // destroy all charts
+  Chart.helpers.each(Chart.instances, c => c.destroy());
+  builtPages = {};
+  allData = {};
+  currentExpId = null;
+  fileInput.value = '';
+}
+
+// ══════════════════════════════════════════════════════════════
+// ZIP PROCESSING
+// ══════════════════════════════════════════════════════════════
+let allData = {};
+let currentExpId = null;
+let builtPages = {};
+
+async function handleZip(file) {
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('progress-screen').style.display = 'flex';
+  setProgress(5, 'Reading zip file…');
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    setProgress(15, 'Scanning folder structure…');
+
+    // find all CSV files, map path → content
+    const csvFiles = {};
+    const promises = [];
+    zip.forEach((path, entry) => {
+      if (entry.dir) return;
+      if (path.includes('__MACOSX')) return;
+      if (!path.toLowerCase().endsWith('.csv')) return;
+      promises.push(
+        entry.async('string').then(content => { csvFiles[path] = content; })
+      );
+    });
+    await Promise.all(promises);
+    setProgress(35, `Found ${Object.keys(csvFiles).length} CSV files…`);
+
+    // Group by experience ID
+    const experiences = {};
+    for (const [path, content] of Object.entries(csvFiles)) {
+      const parts = path.replace(/\\/g, '/').split('/');
+      // find the numeric experience ID segment
+      const expIdx = parts.findIndex(p => /^\d{8,}$/.test(p));
+      if (expIdx === -1) continue;
+      const expId = parts[expIdx];
+      const isCustom = parts.includes('custom-events');
+      const filename = parts[parts.length - 1].replace('.csv', '');
+      if (!experiences[expId]) experiences[expId] = { standard: {}, custom: {} };
+      if (isCustom) {
+        experiences[expId].custom[filename] = content;
+      } else {
+        experiences[expId].standard[filename] = content;
+      }
+    }
+
+    setProgress(55, 'Cleaning and normalizing data…');
+    const expIds = Object.keys(experiences);
+    if (expIds.length === 0) throw new Error('No experience folders found. Check your zip structure.');
+
+    allData = {};
+    expIds.forEach((expId, i) => {
+      setProgress(55 + (i / expIds.length) * 35, `Processing experience ${expId}…`);
+      allData[expId] = processExperience(experiences[expId]);
+    });
+
+    setProgress(95, 'Building dashboard…');
+    await new Promise(r => setTimeout(r, 200));
+
+    buildDashboard(expIds);
+    setProgress(100, 'Done!');
+    await new Promise(r => setTimeout(r, 300));
+
+    document.getElementById('progress-screen').style.display = 'none';
+    document.getElementById('dashboard-screen').style.display = 'block';
+
+  } catch (err) {
+    setProgress(0, '');
+    document.getElementById('progress-screen').style.display = 'none';
+    document.getElementById('upload-screen').style.display = 'flex';
+    alert('Error processing zip: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// DATA PROCESSING (mirrors process.py logic)
+// ══════════════════════════════════════════════════════════════
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const parseRow = line => {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') { inQ = !inQ; }
+      else if (line[i] === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+      else cur += line[i];
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(1).map(l => {
+    const vals = parseRow(l);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  });
+  return { headers, rows };
+}
+
+function parseDate(s) {
+  if (!s) return s;
+  try { return new Date(s).toISOString().slice(0, 10); }
+  catch { return s; }
+}
+
+function safeFloat(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+const METRIC_MAP = {
+  'DailyActiveUsers': 'daily_active_users',
+  'MonthlyActiveUsers': 'monthly_active_users',
+  'AveragePlayTimeMinutesPerDAU': 'avg_playtime_minutes',
+  'AverageSessionLengthMinutes': 'avg_session_length_minutes',
+  'TotalPlayTimeHours': 'total_playtime_hours',
+  'Visits': 'sessions',
+  'ForwardD1Retention': 'day1_retention',
+  'ForwardD7Retention': 'day7_retention',
+  'ForwardD30Retention': 'day30_retention',
+  'DauMauStickiness': 'stickiness_dau_mau',
+  'DailyRevenue': 'daily_revenue',
+  'PayingUsers': 'paying_users',
+  'PayingUsersCVR': 'payer_conversion_rate',
+  'AverageRevenuePerUser': 'arpdau',
+  'AverageRevenuePerPayingUser': 'arppu',
+  'PayoutRobuxV2': 'creator_rewards_robux',
+  'EconomyAverageWalletBalance': 'avg_wallet_balance',
+  'EconomyTransactionAmount': 'economy_transaction_amount',
+  'ItemMonetizationRevenue': 'item_monetization_revenue',
+  'SourceCount': 'source_count',
+  'SourceCountRatioKpi': 'source_count_ratio',
+  'UniqueUsersWithPlaySessions': 'unique_players',
+  'UniqueUsersWithImpressions': 'unique_impressions',
+};
+
+const DEMO_KEYS = ['Age Group', 'Country', 'Gender', 'Language'];
+
+function classifyFile(name) {
+  if (name.includes('TotalSessionsEndedInBucket')) return ['session_bucket', 'session_retention_curve'];
+  for (const dk of DEMO_KEYS) {
+    if (name.includes(dk)) return ['demographic', dk.toLowerCase().replace(' ', '_')];
+  }
+  if (name.includes('Attribution30DRobuxPerUser')) return ['attribution', 'attribution_30d_robux'];
+  for (const [key, clean] of Object.entries(METRIC_MAP)) {
+    if (name.includes(key)) return ['standard', clean];
+  }
+  return ['unknown', name];
+}
+
+function processStandard(csv, metricKey) {
+  const { headers, rows } = parseCSV(csv);
+  if (!rows.length) return null;
+  const valueCol = headers[2] || null;
+  const series = {};
+  for (const row of rows) {
+    const bd = (row['Breakdown'] || '').trim();
+    const date = parseDate(row['Date'] || '');
+    const value = safeFloat(row[valueCol] || Object.values(row)[2]);
+    if (bd.toLowerCase().includes('previous')) continue;
+    const key = bd.toLowerCase().includes('benchmark') ? 'benchmark' : 'total';
+    if (!series[key]) series[key] = [];
+    series[key].push({ date, value });
+  }
+  for (const k in series) series[k].sort((a, b) => a.date < b.date ? -1 : 1);
+  return { metric: metricKey, value_label: valueCol, series };
+}
+
+function processDemographic(csv, demoKey) {
+  const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 3) return null;
+  let snapshotDate = null;
+  const row0 = lines[0].split(',');
+  if (row0[0].trim() === 'Date') snapshotDate = parseDate(row0[1].trim());
+  const data = [];
+  for (const line of lines.slice(2)) {
+    const parts = line.split(',');
+    if (parts.length < 3) continue;
+    const group = parts[0].trim();
+    const value = safeFloat(parts[2].trim());
+    if (group && value !== null) data.push({ group, value });
+  }
+  data.sort((a, b) => b.value - a.value);
+  return { metric: `demographics_${demoKey}`, date: snapshotDate, breakdown: demoKey, data };
+}
+
+function processSessionBucket(csv) {
+  const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  const series = {};
+  let expId = null;
+  for (const line of lines) {
+    const parts = line.split(',');
+    if (parts[0].trim() === 'Experience ID') { expId = parts[1]?.trim(); continue; }
+    if (parts.length < 3) continue;
+    const bd = parts[0].trim();
+    const secs = safeFloat(parts[1]);
+    const pct = safeFloat(parts[2]);
+    if (secs === null || pct === null) continue;
+    const key = bd.toLowerCase().includes('current') ? 'current' : 'previous';
+    if (!series[key]) series[key] = [];
+    series[key].push({ seconds: Math.round(secs), pct });
+  }
+  for (const k in series) series[k].sort((a, b) => a.seconds - b.seconds);
+  return { metric: 'session_retention_curve', experience_id: expId, series };
+}
+
+function processCustomEvent(csv, metricKey) {
+  const { rows } = parseCSV(csv);
+  if (!rows.length) return null;
+  const data = [];
+  for (const row of rows) {
+    const bd = (row['Breakdown'] || '').toLowerCase();
+    if (bd.includes('previous')) continue;
+    const date = parseDate(row['Date'] || '');
+    const vals = Object.values(row);
+    const value = safeFloat(vals[vals.length - 1]);
+    if (value === null || value === 0) continue;
+    data.push({ date, value });
+  }
+  data.sort((a, b) => a.date < b.date ? -1 : 1);
+  return { metric: metricKey, series: { total: data } };
+}
+
+function processExperience({ standard, custom }) {
+  const result = { standard: {}, custom: {} };
+
+  for (const [filename, csv] of Object.entries(standard)) {
+    const [type, key] = classifyFile(filename);
+    let parsed = null;
+    if (type === 'standard') parsed = processStandard(csv, key);
+    else if (type === 'demographic') parsed = processDemographic(csv, key);
+    else if (type === 'session_bucket') parsed = processSessionBucket(csv);
+    else if (type === 'attribution') parsed = processStandard(csv, key);
+    if (parsed && !result.standard[key]) result.standard[key] = parsed;
+  }
+
+  for (const [filename, csv] of Object.entries(custom)) {
+    const parsed = processCustomEvent(csv, filename);
+    if (parsed) result.custom[filename] = parsed.series.total;
+  }
+
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD RENDERING
+// ══════════════════════════════════════════════════════════════
+function buildDashboard(expIds) {
+  currentExpId = expIds[0];
+  const expBar = document.getElementById('exp-bar');
+  // clear existing exp buttons
+  expBar.querySelectorAll('.exp-btn').forEach(b => b.remove());
+
+  expIds.forEach(id => {
+    const btn = document.createElement('button');
+    btn.className = 'exp-btn' + (id === currentExpId ? ' active' : '');
+    btn.textContent = id;
+    btn.onclick = () => {
+      document.querySelectorAll('.exp-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentExpId = id;
+      builtPages = {};
+      // reset tab to overview
+      Chart.helpers.each(Chart.instances, c => c.destroy());
+      ['overview','combat','farming','players','cow'].forEach(p => {
+        document.getElementById('page-' + p).innerHTML = '';
+      });
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector('.tab').classList.add('active');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-overview').classList.add('active');
+      updateHeader();
+      showPage('overview');
+    };
+    expBar.appendChild(btn);
+  });
+
+  updateHeader();
+  builtPages = {};
+  showPage('overview');
+}
+
+function updateHeader() {
+  const expIds = Object.keys(allData);
+  document.getElementById('dash-title').textContent = `Experience ${currentExpId}`;
+  const customCount = Object.keys(allData[currentExpId]?.custom || {}).length;
+  const stdCount = Object.keys(allData[currentExpId]?.standard || {}).length;
+  document.getElementById('dash-meta').textContent =
+    `${expIds.length} experience${expIds.length > 1 ? 's' : ''} loaded · ${stdCount} standard metrics · ${customCount} custom events`;
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector(`[onclick="showPage('${name}')"]`).classList.add('active');
+  if (!builtPages[currentExpId + name]) {
+    builtPages[currentExpId + name] = true;
+    const D = allData[currentExpId];
+    if (name === 'overview') renderOverview(D);
+    if (name === 'combat') renderCombat(D);
+    if (name === 'farming') renderFarming(D);
+    if (name === 'players') renderPlayers(D);
+    if (name === 'cow') renderCow(D);
+  }
+}
+
+// ── Chart helpers ──────────────────────────────────────────
+const P = { blue:'#5b8cff', pink:'#ff5b8c', green:'#5bffb8', yellow:'#ffc85b', purple:'#b05bff', cyan:'#5be0ff', muted:'#6b7094' };
+const fmtD = d => d ? d.slice(5) : '';
+const fmtN = n => {
+  if (n === null || n === undefined) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return n.toFixed(0);
+};
+const sumArr = arr => arr.reduce((a,b) => a + (b.value ?? b), 0);
+const maxArr = arr => Math.max(...arr.map(d => d.value ?? d));
+
+function ds(label, data, color, opts = {}) {
+  return {
+    label, data,
+    borderColor: color,
+    backgroundColor: color + (opts.fill === false ? '00' : '18'),
+    borderWidth: opts.bw ?? 2,
+    pointRadius: opts.pr ?? 3,
+    pointHoverRadius: 5,
+    pointBackgroundColor: color,
+    tension: 0.4,
+    fill: opts.fill !== false,
+    borderDash: opts.dash || undefined,
+    yAxisID: opts.y2 ? 'y2' : 'y',
+  };
+}
+
+function mkChart(id, type, labels, datasets, opts = {}) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return null;
+  return new Chart(ctx, {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: datasets.length > 1,
+          labels: { color: P.muted, font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 12, boxHeight: 12 }
+        },
+        tooltip: {
+          backgroundColor: '#13151f', borderColor: '#1e2135', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: P.muted,
+          titleFont: { family: 'Syne', size: 12, weight: '700' },
+          bodyFont: { family: 'JetBrains Mono', size: 11 },
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (opts.pct) return `  ${ctx.dataset.label}: ${(v*100).toFixed(1)}%`;
+              return `  ${ctx.dataset.label}: ${fmtN(v)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: P.muted, font: { family:'JetBrains Mono', size:10 }, maxRotation:0 }, grid: { color:'#1e2135' } },
+        y: {
+          ticks: { color: P.muted, font: { family:'JetBrains Mono', size:10 },
+            callback: v => opts.pct ? (v*100).toFixed(0)+'%' : fmtN(v) },
+          grid: { color:'#1e2135' }, beginAtZero: true,
+        },
+        ...(opts.y2 ? { y2: { type:'linear', position:'right', grid:{display:false}, ticks:{color:P.muted, font:{family:'JetBrains Mono',size:10}, callback:v=>fmtN(v)} } } : {}),
+      },
+    }
+  });
+}
+
+function cc(title, desc, canvasId, wrapClass='') {
+  return `<div class="chart-card">
+    <div class="chart-title">${title}</div>
+    <div class="chart-desc">${desc}</div>
+    <div class="chart-wrap ${wrapClass}"><canvas id="${canvasId}"></canvas></div>
+  </div>`;
+}
+
+function sc(id, color, label, val, sub) {
+  return `<div class="stat-card ${color}">
+    <div class="stat-label">${label}</div>
+    <div class="stat-value">${val}</div>
+    <div class="stat-sub">${sub}</div>
+  </div>`;
+}
+
+function section(label) {
+  return `<div class="sec"><div class="sec-label">${label}</div><div class="sec-line"></div></div>`;
+}
+
+function empty(msg) {
+  return `<div class="empty-state"><p>⚠ ${msg}</p></div>`;
+}
+
+function getSeries(D, stdKey) {
+  return D.standard[stdKey]?.series?.total || [];
+}
+
+function getCustom(D, key) {
+  return D.custom[key] || [];
+}
+
+// ── OVERVIEW ───────────────────────────────────────────────
+function renderOverview(D) {
+  const el = document.getElementById('page-overview');
+  const dau = getSeries(D, 'daily_active_users').filter(d => d.value > 0);
+  const aliens = getCustom(D, 'AliensKilled');
+  const nights = getCustom(D, 'NightSurvived');
+  const sl = getSeries(D, 'avg_session_length_minutes').filter(d => d.value > 0);
+
+  const peakDAU = dau.length ? maxArr(dau) : 0;
+  const totalAliens = aliens.length ? sumArr(aliens) : 0;
+  const totalNights = nights.length ? sumArr(nights) : 0;
+  const recentSL = sl.slice(-5);
+  const avgSL = recentSL.length ? (recentSL.reduce((a,b)=>a+b.value,0)/recentSL.length).toFixed(1) : '—';
+
+  el.innerHTML = `
+    <div class="stat-row">
+      ${sc('s1','blue','Peak DAU', fmtN(peakDAU), 'daily active users')}
+      ${sc('s2','green','Nights Survived', fmtN(totalNights), 'all sessions')}
+      ${sc('s3','pink','Aliens Killed', fmtN(totalAliens), 'all-time total')}
+      ${sc('s4','yellow','Avg Session', avgSL, 'minutes (recent)')}
+    </div>
+    <div class="chart-grid full">
+      ${cc('Daily Active Users','TOTAL PLAYERS OVER TIME','c-dau','tall')}
+    </div>
+    <div class="chart-grid">
+      ${aliens.length ? cc('Aliens Killed Per Day','TOTAL COMBAT ACTIVITY','c-aliens') : ''}
+      ${nights.length ? cc('Nights Survived Per Day','PLAYER PROGRESSION SIGNAL','c-nights') : ''}
+    </div>
+    <div class="chart-grid">
+      ${sl.length ? cc('Session Length Over Time','AVG MINUTES PER SESSION','c-sl') : ''}
+      ${D.standard.session_retention_curve ? cc('Session Retention Curve','% STILL PLAYING · NEW PLAYERS','c-src') : ''}
+    </div>
+  `;
+
+  if (dau.length) mkChart('c-dau','line', dau.map(d=>fmtD(d.date)), [ds('Daily Active Users', dau.map(d=>d.value), P.blue)]);
+  if (aliens.length) mkChart('c-aliens','line', aliens.map(d=>fmtD(d.date)), [ds('Aliens Killed', aliens.map(d=>d.value), P.pink)]);
+  if (nights.length) mkChart('c-nights','line', nights.map(d=>fmtD(d.date)), [ds('Nights Survived', nights.map(d=>d.value), P.green)]);
+  if (sl.length) mkChart('c-sl','bar', sl.map(d=>fmtD(d.date)), [{ label:'Avg Session (min)', data:sl.map(d=>d.value), backgroundColor:P.yellow+'80', borderColor:P.yellow, borderWidth:2 }]);
+
+  const src = D.standard.session_retention_curve;
+  if (src) {
+    const cur = src.series.current || [];
+    const prev = src.series.previous || [];
+    const labels = cur.map(d => Math.round(d.seconds/60)+'m');
+    mkChart('c-src','line', labels, [
+      ds('Current', cur.map(d=>d.pct), P.blue),
+      ds('Previous', prev.map(d=>d.pct), P.muted, { dash:[4,3] }),
+    ], { pct:true });
+  }
+}
+
+// ── COMBAT ─────────────────────────────────────────────────
+function renderCombat(D) {
+  const el = document.getElementById('page-combat');
+  const metrics = [
+    { key:'AliensKilled', label:'Aliens Killed', color:P.pink },
+    { key:'TurretKills', label:'Turret Kills', color:P.blue },
+    { key:'GrenadeKills', label:'Grenade Kills', color:P.yellow },
+    { key:'LandmineKills', label:'Landmine Kills', color:P.green },
+    { key:'DamageSustained', label:'Damage Sustained', color:P.purple },
+    { key:'TurretDamage', label:'Turret Damage', color:P.cyan },
+    { key:'PlayerDownedTimes', label:'Players Downed', color:P.pink },
+    { key:'PlayerRevivedTimes', label:'Players Revived', color:P.green },
+  ].filter(m => getCustom(D, m.key).length > 0);
+
+  if (!metrics.length) { el.innerHTML = empty('No combat data found in this export.'); return; }
+
+  const cards = metrics.map((m,i) => {
+    const arr = getCustom(D, m.key);
+    return `<div class="metric-mini${i===0?' selected':''}" data-key="${m.key}" data-color="${m.color}" data-label="${m.label}">
+      <div class="metric-mini-label">${m.label}</div>
+      <div class="metric-mini-val" style="color:${m.color}">${fmtN(sumArr(arr))}</div>
+      <div class="metric-mini-peak">Peak: ${fmtN(maxArr(arr))}</div>
+    </div>`;
+  }).join('');
+
+  const hasKills = getCustom(D,'TurretKills').length && getCustom(D,'GrenadeKills').length;
+  const hasHealth = getCustom(D,'PlayerDownedTimes').length;
+  const hasEff = getCustom(D,'AvgKillsPerGrenade').length;
+
+  el.innerHTML = `
+    ${section('Combat Breakdown')}
+    <div class="metric-grid" id="combat-cards">${cards}</div>
+    <div class="chart-grid full">
+      <div class="chart-card">
+        <div class="chart-title" id="combat-main-title">Aliens Killed Per Day</div>
+        <div class="chart-desc">DAILY TOTAL · CLICK ANY CARD TO SWITCH</div>
+        <div class="chart-wrap tall"><canvas id="c-combat-main"></canvas></div>
+      </div>
+    </div>
+    ${hasKills || hasHealth ? section('Breakdowns') : ''}
+    <div class="chart-grid">
+      ${hasKills ? cc('Kill Source Comparison','TURRET · GRENADE · LANDMINE KILLS','c-kill-cmp','tall') : ''}
+      ${hasHealth ? cc('Player Health Events','DOWNED VS REVIVED PER DAY','c-health','tall') : ''}
+    </div>
+    ${hasEff ? `<div class="chart-grid">
+      ${cc('Avg Kills / Grenade','GRENADE EFFICIENCY','c-gren-eff')}
+      ${cc('Avg Kills / Landmine','LANDMINE EFFICIENCY','c-land-eff')}
+    </div>` : ''}
+  `;
+
+  // init main chart
+  let mainChart = null;
+  const initMain = (key, label, color) => {
+    const arr = getCustom(D, key);
+    document.getElementById('combat-main-title').textContent = label + ' Per Day';
+    if (mainChart) mainChart.destroy();
+    mainChart = mkChart('c-combat-main','line', arr.map(d=>fmtD(d.date)), [ds(label, arr.map(d=>d.value), color)]);
+  };
+  initMain(metrics[0].key, metrics[0].label, metrics[0].color);
+
+  document.getElementById('combat-cards').addEventListener('click', e => {
+    const card = e.target.closest('.metric-mini');
+    if (!card) return;
+    document.querySelectorAll('.metric-mini').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    initMain(card.dataset.key, card.dataset.label, card.dataset.color);
+  });
+
+  // kill comparison
+  if (hasKills) {
+    const tk = getCustom(D,'TurretKills'), gk = getCustom(D,'GrenadeKills'), lk = getCustom(D,'LandmineKills');
+    mkChart('c-kill-cmp','bar', tk.map(d=>fmtD(d.date)), [
+      { label:'Turrets', data:tk.map(d=>d.value), backgroundColor:P.blue+'99', borderColor:P.blue, borderWidth:1 },
+      { label:'Grenades', data:gk.map(d=>d.value), backgroundColor:P.yellow+'99', borderColor:P.yellow, borderWidth:1 },
+      { label:'Landmines', data:lk.map(d=>d.value), backgroundColor:P.green+'99', borderColor:P.green, borderWidth:1 },
+    ]);
+  }
+  if (hasHealth) {
+    const dn = getCustom(D,'PlayerDownedTimes'), rv = getCustom(D,'PlayerRevivedTimes');
+    mkChart('c-health','line', dn.map(d=>fmtD(d.date)), [
+      ds('Downed', dn.map(d=>d.value), P.pink),
+      ds('Revived', rv.map(d=>d.value), P.green),
+    ]);
+  }
+  if (hasEff) {
+    const ge = getCustom(D,'AvgKillsPerGrenade'), le = getCustom(D,'AvgKillsPerLandmine');
+    if (ge.length) mkChart('c-gren-eff','line', ge.map(d=>fmtD(d.date)), [ds('Kills/Grenade', ge.map(d=>d.value), P.yellow)]);
+    if (le.length) mkChart('c-land-eff','line', le.map(d=>fmtD(d.date)), [ds('Kills/Landmine', le.map(d=>d.value), P.green)]);
+  }
+}
+
+// ── FARMING ────────────────────────────────────────────────
+function renderFarming(D) {
+  const el = document.getElementById('page-farming');
+  const hayG = getCustom(D,'HayGrown'), hayF = getCustom(D,'HayFedPerDay'), hayT = getCustom(D,'TotalHayFedToCow');
+  const trees = getCustom(D,'TreesPlanted').length && getCustom(D,'TreesHarvested').length;
+  const turrets = getCustom(D,'TotalTurrets').length;
+  const hasResources = ['timber','stone','gloop'].some(r => getCustom(D,`ResourceCreated_${r}`).length);
+
+  el.innerHTML = `
+    ${section('Hay & Cow')}
+    <div class="chart-grid">
+      ${hayG.length ? cc('Hay Grown vs Fed Per Day','PRODUCTION VS CONSUMPTION','c-hay','tall') : ''}
+      ${hayT.length ? cc('Total Hay Fed to Cow','CUMULATIVE COW FEEDING','c-haytotal','tall') : ''}
+    </div>
+    ${hasResources ? section('Resource Economy') : ''}
+    ${hasResources ? `<div class="chart-grid thirds">
+      ${getCustom(D,'ResourceCreated_timber').length ? cc('Timber','CREATED · SPENT · REMAINING','c-timber') : ''}
+      ${getCustom(D,'ResourceCreated_stone').length ? cc('Stone','CREATED · SPENT · REMAINING','c-stone') : ''}
+      ${getCustom(D,'ResourceCreated_gloop').length ? cc('Gloop','CREATED · SPENT · REMAINING','c-gloop') : ''}
+    </div>` : ''}
+    ${trees || turrets ? section('Trees & Turrets') : ''}
+    <div class="chart-grid">
+      ${trees ? cc('Trees Planted vs Harvested','FORESTRY ACTIVITY PER DAY','c-trees') : ''}
+      ${turrets ? cc('Turrets Placed Per Day','DEFENSE DEPLOYMENT','c-turrets') : ''}
+    </div>
+  `;
+
+  if (hayG.length) mkChart('c-hay','line', hayG.map(d=>fmtD(d.date)), [
+    ds('Hay Grown', hayG.map(d=>d.value), P.green),
+    ds('Hay Fed/Day', hayF.map(d=>d.value), P.yellow),
+  ]);
+  if (hayT.length) {
+    let cum = 0;
+    const cumData = hayT.map(d => { cum += d.value; return cum; });
+    mkChart('c-haytotal','line', hayT.map(d=>fmtD(d.date)), [ds('Cumulative Hay Fed', cumData, P.yellow)]);
+  }
+
+  for (const [id, res] of [['c-timber','timber'],['c-stone','stone'],['c-gloop','gloop']]) {
+    const cr = getCustom(D,`ResourceCreated_${res}`);
+    if (!cr.length) continue;
+    const sp = getCustom(D,`ResourceSpent_${res}`);
+    const rm = getCustom(D,`ResourceRemaining_${res}`);
+    mkChart(id,'line', cr.map(d=>fmtD(d.date)), [
+      ds('Created', cr.map(d=>d.value), P.green, {fill:false}),
+      ds('Spent', sp.map(d=>d.value), P.pink, {fill:false}),
+      ds('Remaining', rm.map(d=>d.value), P.yellow, {fill:false}),
+    ]);
+  }
+
+  if (trees) {
+    const tp = getCustom(D,'TreesPlanted'), th = getCustom(D,'TreesHarvested');
+    mkChart('c-trees','bar', tp.map(d=>fmtD(d.date)), [
+      { label:'Planted', data:tp.map(d=>d.value), backgroundColor:P.green+'88', borderColor:P.green, borderWidth:1 },
+      { label:'Harvested', data:th.map(d=>d.value), backgroundColor:P.yellow+'88', borderColor:P.yellow, borderWidth:1 },
+    ]);
+  }
+  if (turrets) {
+    const t = getCustom(D,'TotalTurrets');
+    mkChart('c-turrets','bar', t.map(d=>fmtD(d.date)), [{ label:'Turrets', data:t.map(d=>d.value), backgroundColor:P.blue+'88', borderColor:P.blue, borderWidth:1 }]);
+  }
+}
+
+// ── PLAYERS ────────────────────────────────────────────────
+function renderPlayers(D) {
+  const el = document.getElementById('page-players');
+  const d1 = getSeries(D,'day1_retention').filter(d=>d.value>0);
+  const d7 = getSeries(D,'day7_retention').filter(d=>d.value>0);
+  const src = D.standard.session_retention_curve;
+  const age = D.standard.age_group;
+  const gender = D.standard.gender;
+
+  el.innerHTML = `
+    ${src ? `<div class="chart-grid full">${cc('Session Retention Curve — New Players','% STILL IN SESSION · CURRENT VS PREVIOUS PERIOD','c-ret-full','tall')}</div>` : ''}
+    <div class="chart-grid">
+      ${d1.length ? cc('Day 1 Retention','% RETURNING NEXT DAY','c-d1') : ''}
+      ${d7.length ? cc('Day 7 Retention','% RETURNING AFTER 1 WEEK','c-d7') : ''}
+    </div>
+    ${age || gender ? section('Player Demographics') : ''}
+    <div class="donut-row">
+      ${age ? `<div class="donut-card">
+        <div class="chart-title" style="margin-bottom:14px">Age Group</div>
+        <div class="donut-wrap"><canvas id="c-age"></canvas></div>
+        <div class="donut-labels" id="age-lbl"></div>
+      </div>` : ''}
+      ${gender ? `<div class="donut-card">
+        <div class="chart-title" style="margin-bottom:14px">Gender</div>
+        <div class="donut-wrap"><canvas id="c-gender"></canvas></div>
+        <div class="donut-labels" id="gender-lbl"></div>
+      </div>` : ''}
+    </div>
+  `;
+
+  if (src) {
+    const cur = src.series.current || [], prev = src.series.previous || [];
+    mkChart('c-ret-full','line', cur.map(d=>Math.round(d.seconds/60)+'m'), [
+      ds('Current', cur.map(d=>d.pct), P.blue),
+      ds('Previous', prev.map(d=>d.pct), P.muted, {dash:[5,4]}),
+    ], { pct:true });
+  }
+  if (d1.length) mkChart('c-d1','bar', d1.map(d=>fmtD(d.date)), [{ label:'Day 1', data:d1.map(d=>d.value), backgroundColor:P.green+'88', borderColor:P.green, borderWidth:1 }], { pct:true });
+  if (d7.length) mkChart('c-d7','bar', d7.map(d=>fmtD(d.date)), [{ label:'Day 7', data:d7.map(d=>d.value), backgroundColor:P.yellow+'88', borderColor:P.yellow, borderWidth:1 }], { pct:true });
+
+  function donut(id, lblId, data, colors) {
+    if (!document.getElementById(id)) return;
+    new Chart(document.getElementById(id), {
+      type:'doughnut',
+      data: { labels:data.map(d=>d.group), datasets:[{ data:data.map(d=>d.value), backgroundColor:colors, borderColor:'#13151f', borderWidth:3 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:'65%',
+        plugins: { legend:{display:false}, tooltip:{ backgroundColor:'#13151f', borderColor:'#1e2135', borderWidth:1,
+          titleFont:{family:'Syne',size:11}, bodyFont:{family:'JetBrains Mono',size:10},
+          callbacks:{ label: ctx => { const tot = data.reduce((a,b)=>a+b.value,0); return `  ${(ctx.parsed/tot*100).toFixed(1)}%`; } }
+        }}
+      }
+    });
+    const tot = data.reduce((a,b)=>a+b.value,0);
+    const lbl = document.getElementById(lblId);
+    data.forEach((d,i) => {
+      lbl.innerHTML += `<div class="donut-row-item">
+        <span style="color:${colors[i]}">${d.group}</span>
+        <span>${(d.value/tot*100).toFixed(0)}%</span>
+      </div>`;
+    });
+  }
+
+  if (age) donut('c-age','age-lbl', age.data, [P.blue,P.green,P.yellow,P.pink,P.purple]);
+  if (gender) donut('c-gender','gender-lbl', gender.data, [P.blue,P.pink,P.muted]);
+}
+
+// ── COW PRESSURE ───────────────────────────────────────────
+function renderCow(D) {
+  const el = document.getElementById('page-cow');
+  const grabs = getCustom(D,'AliensStartedCarryingCow');
+  const cowDist = getCustom(D,'FarthestCowMovedPercent');
+  const dmg = getCustom(D,'DamageSustained');
+  const tk = getCustom(D,'TurretKills');
+  const td = getCustom(D,'TurretDamage');
+
+  if (!grabs.length && !cowDist.length) { el.innerHTML = empty('No cow pressure data found in this export.'); return; }
+
+  el.innerHTML = `
+    <div class="stat-row">
+      ${grabs.length ? sc('cst1','pink','Abduction Attempts', fmtN(sumArr(grabs)), 'total cow grabs') : ''}
+      ${cowDist.length ? sc('cst2','yellow','Peak Cow Drag', fmtN(maxArr(cowDist)), 'highest day') : ''}
+      ${td.length ? sc('cst3','blue','Turret Damage', fmtN(sumArr(td)), 'all-time total') : ''}
+    </div>
+    <div class="chart-grid full">
+      ${cc('Alien Pressure Index','ABDUCTION ATTEMPTS · COW DRAG SUM · DAMAGE SUSTAINED','c-cow-pressure','tall')}
+    </div>
+    <div class="chart-grid">
+      ${tk.length || td.length ? cc('Turret Performance','TURRET KILLS VS DAMAGE DEALT','c-turret-perf','tall') : ''}
+      ${grabs.length ? cc('Abduction Attempts Per Day','HOW OFTEN ALIENS GRABBED THE COW','c-cow-grabs','tall') : ''}
+    </div>
+  `;
+
+  const pressureDates = grabs.length ? grabs.map(d=>fmtD(d.date)) : cowDist.map(d=>fmtD(d.date));
+  const pressureDatasets = [
+    grabs.length && ds('Abduction Attempts', grabs.map(d=>d.value), P.pink, {fill:false}),
+    cowDist.length && ds('Cow Drag Sum', cowDist.map(d=>d.value), P.yellow, {fill:false}),
+    dmg.length && ds('Damage Sustained', dmg.map(d=>d.value), P.purple, {fill:false}),
+  ].filter(Boolean);
+  mkChart('c-cow-pressure','line', pressureDates, pressureDatasets);
+
+  if (tk.length || td.length) {
+    mkChart('c-turret-perf','line', (tk.length ? tk : td).map(d=>fmtD(d.date)), [
+      tk.length && ds('Turret Kills', tk.map(d=>d.value), P.blue, {fill:false}),
+      td.length && ds('Turret Damage', td.map(d=>d.value), P.cyan, {fill:false}),
+    ].filter(Boolean));
+  }
+  if (grabs.length) {
+    mkChart('c-cow-grabs','bar', grabs.map(d=>fmtD(d.date)), [{ label:'Attempts', data:grabs.map(d=>d.value), backgroundColor:P.pink+'88', borderColor:P.pink, borderWidth:1 }]);
+  }
+}
+</script>
+</body>
+</html>
