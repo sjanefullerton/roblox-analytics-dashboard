@@ -297,6 +297,35 @@ header {
 }
 .btn-reset:hover { color: var(--text); border-color: var(--muted); }
 
+.btn-guide {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 14px;
+  text-decoration: none;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-guide:hover { color: var(--accent); border-color: var(--accent); }
+
+.help-link {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 28px;
+  position: relative;
+  z-index: 1;
+}
+.help-link a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.help-link a:hover { color: #fff; }
+
 /* exp selector */
 .exp-bar {
   padding: 0 48px;
@@ -457,6 +486,8 @@ header {
       <div class="step-text">Drop the zip here — charts appear instantly, nothing is stored</div>
     </div>
   </div>
+
+  <p class="help-link">Need help navigating the dashboard? Find more information <a href="https://github.com/sjanefullerton/roblox-analytics-dashboard/blob/main/USER_GUIDE.md" target="_blank">here</a>.</p>
 </div>
 
 <!-- ══════════════ PROGRESS SCREEN ══════════════ -->
@@ -474,6 +505,7 @@ header {
       <div class="header-meta" id="dash-meta">—</div>
     </div>
     <button class="btn-reset" onclick="resetToUpload()">↩ Upload New File</button>
+    <a class="btn-guide" href="https://github.com/sjanefullerton/roblox-analytics-dashboard/blob/main/USER_GUIDE.md" target="_blank">? User Guide</a>
   </header>
 
   <div class="exp-bar" id="exp-bar">
