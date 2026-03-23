@@ -31,9 +31,9 @@ If your zip contains more than one experience ID folder, a switcher appears just
 
 ## What the dashboard shows
 
-The dashboard has five tabs. Which charts appear depends entirely on what data is in your zip — if a metric wasn't exported, that chart is simply skipped. Nothing breaks if data is missing.
+Which charts appear depends entirely on what data is in your zip — if a metric wasn't exported, that chart is simply skipped. Nothing breaks if data is missing.
 
-The **Overview** and **Players & Retention** tabs show standard Roblox metrics available for any experience. The **Combat**, **Farming & Resources**, and **Pressure** tabs are driven by custom event data and will only populate if your experience tracks those events.
+The **Overview** and **Players & Retention** tabs show standard Roblox metrics available for any experience. Any additional tabs are driven by custom event data specific to your experience and will only appear if your export includes those events.
 
 ---
 
@@ -48,23 +48,15 @@ A high-level snapshot of the experience's health.
 
 ---
 
-### Combat tab
-Detailed breakdown of combat and weapon-related custom events. Only appears if your experience exports combat events.
+### Custom event tabs
+Any tabs beyond Overview and Players & Retention are built from your experience's custom events. Which tabs appear and what they contain will vary depending on what your experience tracks. Examples of what these tabs can show:
 
-- **Metric selector cards** — Click any card to load its daily chart below. Each card shows the all-time total and peak day. Which metrics appear depends on what your experience tracks
-- **Kill Source Comparison** — Compares kill counts from different weapon or ability types side by side per day, showing which players lean on most and whether that shifts over time
-- **Player Health Events** — Tracks times players were downed vs revived per day — useful for co-op balance tuning
-- **Weapon Efficiency** — Average kills per use for throwable or deployable weapons over time. Rising efficiency can mean players are improving or that enemy density has changed
-
----
-
-### Farming & Resources tab
-Tracks resource economy and progression loops. Only appears if your experience exports resource events.
-
-- **Resource production vs consumption** — For each tracked resource: how much was created, how much was spent, and how much is left unspent at end of day. A growing unspent stack means players aren't finding uses for it; a depleting one may signal a bottleneck
-- **Cumulative totals** — Running totals for key feeding or crafting actions, useful for comparing output across days
-- **Planting and harvesting loops** — If your experience tracks plant/harvest cycles, this shows whether players are sustaining or depleting their resource sources
-- **Deployable structures** — Daily counts of any structures or defenses placed, useful for spotting correlations with difficulty spikes or player count changes
+- **Metric selector cards** — Click any card to load its daily chart. Each card shows the all-time total and peak day
+- **Activity comparisons** — Multiple related metrics plotted side by side per day, showing how different systems interact over time
+- **Economy tracking** — For each tracked resource: how much was created, spent, and left unspent at end of day
+- **Efficiency metrics** — Average output per action over time, useful for spotting whether players are improving or whether balance has shifted
+- **Event counts per day** — Bar charts of key in-game actions, useful for spotting sessions or time periods that are overtuned or undertuned
+- **Player health and progression** — Tracks events like players being downed or revived, structures placed, or objectives completed
 
 ---
 
@@ -76,16 +68,6 @@ Engagement and demographic data. Available for any experience.
 - **Day 7 Retention** — Percentage of new players still playing a week later. A stronger signal of whether the core loop is sticky
 - **Age Group breakdown** — Share of monthly active users by age bracket
 - **Gender breakdown** — Share of monthly active users by gender
-
----
-
-### Pressure tab
-Tracks threat intensity and defensive performance for experiences with enemy pressure mechanics. Only appears if your experience exports relevant custom events.
-
-- **Stat cards** — Quick totals for key pressure indicators: enemy actions, peak threat values, and defensive output
-- **Pressure Index** — Multiple threat and damage metrics on one chart, showing how hard the game is hitting players over time and whether difficulty is increasing
-- **Defensive Performance** — Compares defensive structure kills and damage output over time, useful for evaluating whether defenses are keeping pace with incoming threat
-- **Threat Events Per Day** — Daily bar chart of a key enemy action (e.g. objective grabs, boss spawns), useful for spotting nights or sessions that are overtuned or undertuned
 
 ---
 
