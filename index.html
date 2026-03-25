@@ -173,6 +173,28 @@ const fmtN=n=>{if(n===null||n===undefined)return'—';if(n>=1e6)return(n/1e6).to
 const sumArr=arr=>arr.reduce((a,b)=>a+(b.value??b),0);
 const maxArr=arr=>arr.length?Math.max(...arr.map(d=>d.value??d)):0;
 
+// ── LABEL FORMATTER — turns raw CSV breakdown keys into plain English ──
+function fmtKey(k){
+  if(!k)return k;
+  k=k.trim();
+  if(k==='Session - 1')return '1st Session';
+  if(k==='Session - 2')return '2nd Session';
+  if(k==='Session - >=3')return '3rd+ Session';
+  if(k.startsWith('Night - >='))return 'Night '+k.split('>=')[1]+'+';
+  if(k.startsWith('Night - '))return 'Night '+k.split('Night - ')[1];
+  if(k==='Players - 1')return '1 Player';
+  if(k.startsWith('Players - '))return k.split('Players - ')[1]+' Players';
+  if(k.startsWith('Gun - ')){
+    const g=k.split('Gun - ')[1];
+    return g.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()).trim();
+  }
+  if(k.startsWith('Reason - ')){
+    const r=k.split('Reason - ')[1];
+    return r.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()).trim();
+  }
+  return k;
+}
+
 function mkDs(label,data,color,opts={}){
   return{label,data,borderColor:color,backgroundColor:opts.bar?color+'99':color+'18',borderWidth:opts.bar?1:2,pointRadius:opts.pr??3,pointHoverRadius:5,pointBackgroundColor:color,tension:0.4,fill:opts.fill!==false&&!opts.bar,borderDash:opts.dash||undefined,yAxisID:opts.y2?'y2':'y'};
 }
@@ -442,13 +464,14 @@ function renderTabs(){
   const hasCustom=Object.keys(D.custom).length>0;
 
   const tabs=[];
-  if(dims.session&&dims.session.length>0) tabs.push({id:'onboarding',label:'Onboarding'});
-  if(dims.night&&dims.night.length>0) tabs.push({id:'night',label:'Night Progression'});
-  if(dims.players&&dims.players.length>0) tabs.push({id:'balance',label:'Game Balance'});
-  if(dims.gun&&dims.gun.length>0) tabs.push({id:'weapons',label:'Weapon Preference'});
-  if(hasCustom) tabs.push({id:'totals',label:'Daily Totals'});
-  tabs.push({id:'players',label:'Players & Retention'});
-  tabs.push({id:'stats',label:'General Stats'});
+  tabs.push({id:'overview',label:'Overview'});
+  if(hasCustom) tabs.push({id:'totals',label:'Event Trends'});
+  if(dims.night&&dims.night.length>0) tabs.push({id:'night',label:'Night by Night'});
+  if(dims.session&&dims.session.length>0) tabs.push({id:'onboarding',label:'Learning Curve'});
+  if(dims.players&&dims.players.length>0) tabs.push({id:'balance',label:'Player Count'});
+  if(dims.gun&&dims.gun.length>0) tabs.push({id:'weapons',label:'Weapons & Tools'});
+  tabs.push({id:'players',label:'Players'});
+  tabs.push({id:'stats',label:'Game Stats'});
 
   const nav=document.getElementById('main-nav');
   nav.innerHTML='';
@@ -477,7 +500,9 @@ function renderTabs(){
   const customCount=Object.keys(D.custom).length;
   const dimNames=Object.keys(dims).join(', ');
   document.getElementById('dash-title').textContent=`Experience ${currentExpId}`;
-  document.getElementById('dash-meta').textContent=`${customCount} custom events · breakdowns: ${dimNames||'totals only'} · ${tabs.length} tabs`;
+  const dimLabels={session:'learning curve',night:'night-by-night',players:'player count',gun:'weapons'};
+  const dimDisplay=Object.keys(dims).map(d=>dimLabels[d]||d).join(', ');
+  document.getElementById('dash-meta').textContent=`${customCount} custom events · ${dimDisplay||'totals only'} · ${tabs.length} tabs`;
 
   builtPages={};
   if(tabs.length>0){builtPages[currentExpId+tabs[0].id]=true;buildPage(tabs[0].id,D);}
@@ -486,13 +511,49 @@ function renderTabs(){
 function buildPage(name,D){
   const el=document.getElementById('page-'+name);
   if(!el)return;
-  if(name==='onboarding')renderOnboarding(el,D);
+  if(name==='overview')renderOverview(el,D);
+  else if(name==='onboarding')renderOnboarding(el,D);
   else if(name==='night')renderNight(el,D);
   else if(name==='balance')renderBalance(el,D);
   else if(name==='weapons')renderWeapons(el,D);
   else if(name==='totals')renderTotals(el,D);
   else if(name==='players')renderPlayers(el,D);
   else if(name==='stats')renderStats(el,D);
+}
+
+// ── OVERVIEW TAB ──
+function renderOverview(el,D){
+  const dau=D.standard.dau?.series?.total?.filter(d=>d.value>0)||[];
+  const sl=D.standard.avg_session_len?.series?.total?.filter(d=>d.value>0)||[];
+  const peakDAU=dau.length?maxArr(dau):0;
+  const recentSL=sl.slice(-7);
+  const avgSL=recentSL.length?(recentSL.reduce((a,b)=>a+b.value,0)/recentSL.length).toFixed(1):'—';
+  const customEvents=Object.entries(D.custom).filter(([_,e])=>e.total&&e.total.length>0);
+  const topEvents=customEvents.slice(0,4);
+
+  const statCards=topEvents.map(([name,e],i)=>{
+    const colors=['blue','green','pink','yellow'];
+    const accentVars=['var(--accent)','var(--accent3)','var(--accent2)','var(--accent4)'];
+    return `<div class="stat-card ${colors[i%4]}"><div class="stat-label">${name}</div><div class="stat-value" style="color:${accentVars[i%4]}">${fmtN(sumArr(e.total))}</div><div class="stat-sub">all-time total</div></div>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="insight"><strong>Overview</strong> — A quick snapshot of your experience. The DAU chart shows daily player traffic. The cards below show all-time totals for your top custom events. Use the other tabs to drill into specific breakdowns.</div>
+    <div class="stat-row">
+      ${peakDAU?`<div class="stat-card blue"><div class="stat-label">Peak Daily Players</div><div class="stat-value">${fmtN(peakDAU)}</div><div class="stat-sub">daily active users</div></div>`:''}
+      ${avgSL!=='—'?`<div class="stat-card green"><div class="stat-label">Avg Session Length</div><div class="stat-value">${avgSL}</div><div class="stat-sub">minutes (recent)</div></div>`:''}
+      ${statCards}
+    </div>
+    ${dau.length?`<div class="chart-grid full">${cc('Daily Active Users','HOW MANY PLAYERS ARE PLAYING EACH DAY','c-ov-dau','tall')}</div>`:''}
+    ${customEvents.length>4?`
+      ${sec('All-Time Event Totals')}
+      <div class="stat-row">${customEvents.slice(4).map(([name,e],i)=>{
+        const colors=['blue','green','pink','yellow'];
+        const accentVars=['var(--accent)','var(--accent3)','var(--accent2)','var(--accent4)'];
+        return `<div class="stat-card ${colors[i%4]}"><div class="stat-label">${name}</div><div class="stat-value" style="color:${accentVars[i%4]}">${fmtN(sumArr(e.total))}</div><div class="stat-sub">all-time</div></div>`;
+      }).join('')}</div>`:''}
+  `;
+  if(dau.length)mkChart('c-ov-dau','line',dau.map(d=>fmtD(d.date)),[mkDs('Daily Active Users',dau.map(d=>d.value),P.blue)]);
 }
 
 // ── HELPERS ──
@@ -512,16 +573,17 @@ function sortDimKeys(keys,dim){
 function renderOnboarding(el,D){
   const sessionEvents=getEventsWithDim(D,'session');
   if(!sessionEvents.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No session breakdown data found.</div>';return;}
+  const MINI_LIMIT=6;
   el.innerHTML=`
-    <div class="insight"><strong>Onboarding Analysis</strong> — Compares player performance in their 1st, 2nd, and 3rd+ sessions. Rising values from Session 1 → 2 → 3+ indicate players are learning and improving over time.</div>
-    ${sec('Select a Metric')}
+    <div class="insight"><strong>Learning Curve</strong> — Compares player activity in their 1st, 2nd, and 3rd+ sessions. If values go up from 1st → 2nd → 3rd+ session, players are learning and improving. Flat or falling values may indicate the game needs clearer onboarding.</div>
+    ${sec('Select a Metric to Explore')}
     <div class="pill-row" id="session-pills"></div>
     <div class="chart-grid full"><div class="chart-card">
       <div class="chart-title" id="session-chart-title">—</div>
-      <div class="chart-desc">SESSION 1 VS SESSION 2 VS SESSION 3+</div>
+      <div class="chart-desc">1ST vs 2ND vs 3RD+ SESSION — DAILY TREND</div>
       <div class="chart-wrap tall"><canvas id="c-session-main"></canvas></div>
     </div></div>
-    ${sec('All Metrics — Latest Day Session Comparison')}
+    ${sec('Snapshot — Top Metrics on Most Recent Day')}
     <div class="chart-grid thirds" id="session-mini-grid"></div>
   `;
   let activeChart=null;
@@ -535,11 +597,14 @@ function renderOnboarding(el,D){
     pill.onclick=()=>{document.querySelectorAll('#session-pills .pill').forEach(p=>p.classList.remove('active'));pill.classList.add('active');loadSessionChart(ev);};
     pillRow.appendChild(pill);
 
-    const keys=sortDimKeys(Object.keys(ev.data),'session');
-    const latestVals=keys.map(k=>{const arr=ev.data[k];return arr&&arr.length?arr[arr.length-1].value:0;});
-    const miniId=`c-ses-mini-${i}`;
-    miniGrid.innerHTML+=`<div class="chart-card"><div class="chart-title">${ev.name}</div><div class="chart-desc">SESSION COMPARISON · LATEST DAY</div><div class="chart-wrap short"><canvas id="${miniId}"></canvas></div></div>`;
-    setTimeout(()=>{mkChart(miniId,'bar',keys.map(k=>k.replace('Session - ','S')),[{label:'Value',data:latestVals,backgroundColor:keys.map((_,j)=>PALETTE[j]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j]),borderWidth:1}]);},0);
+    // Only render mini charts for first MINI_LIMIT events to avoid overwhelming the page
+    if(i<MINI_LIMIT){
+      const keys=sortDimKeys(Object.keys(ev.data),'session');
+      const latestVals=keys.map(k=>{const arr=ev.data[k];return arr&&arr.length?arr[arr.length-1].value:0;});
+      const miniId=`c-ses-mini-${i}`;
+      miniGrid.innerHTML+=`<div class="chart-card"><div class="chart-title">${ev.name}</div><div class="chart-desc">1ST vs 2ND vs 3RD+ SESSION · LATEST DAY</div><div class="chart-wrap short"><canvas id="${miniId}"></canvas></div></div>`;
+      setTimeout(()=>{mkChart(miniId,'bar',keys.map(k=>fmtKey(k)),[{label:'Value',data:latestVals,backgroundColor:keys.map((_,j)=>PALETTE[j]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j]),borderWidth:1}]);},0);
+    }
   });
 
   function loadSessionChart(ev){
@@ -547,7 +612,7 @@ function renderOnboarding(el,D){
     const keys=sortDimKeys(Object.keys(ev.data),'session');
     const dates=[...new Set(keys.flatMap(k=>ev.data[k].map(d=>d.date)))].sort();
     if(activeChart)activeChart.destroy();
-    activeChart=mkChart('c-session-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(k,dates.map(d=>map[d]??null),PALETTE[i],{fill:false});}));
+    activeChart=mkChart('c-session-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(fmtKey(k),dates.map(d=>map[d]??null),PALETTE[i],{fill:false});}));
   }
   if(sessionEvents.length)loadSessionChart(sessionEvents[0]);
 }
@@ -557,19 +622,18 @@ function renderNight(el,D){
   const nightEvents=getEventsWithDim(D,'night');
   if(!nightEvents.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No night breakdown data found.</div>';return;}
   el.innerHTML=`
-    <div class="insight"><strong>Night Progression</strong> — How each metric changes as players advance through nights. Shows whether difficulty scales correctly and if players improve with experience.</div>
+    <div class="insight"><strong>Night by Night</strong> — The bar chart shows all-time totals per night so you can immediately see which nights are hardest or easiest. The line chart below shows how each night's numbers changed over time as the game evolved.</div>
     ${sec('Select a Metric')}
     <div class="pill-row" id="night-pills"></div>
     <div class="chart-grid full"><div class="chart-card">
-      <div class="chart-title" id="night-chart-title">—</div>
-      <div class="chart-desc">BY NIGHT NUMBER · DAILY TOTALS</div>
-      <div class="chart-wrap tall"><canvas id="c-night-main"></canvas></div>
-    </div></div>
-    ${sec('Total Per Night · Latest Day')}
-    <div class="chart-grid full"><div class="chart-card">
       <div class="chart-title" id="night-bar-title">—</div>
-      <div class="chart-desc">CUMULATIVE VALUE PER NIGHT NUMBER</div>
-      <div class="chart-wrap"><canvas id="c-night-bar"></canvas></div>
+      <div class="chart-desc">ALL-TIME TOTAL PER NIGHT — WHICH NIGHTS ARE HARDEST?</div>
+      <div class="chart-wrap tall"><canvas id="c-night-bar"></canvas></div>
+    </div></div>
+    <div class="chart-grid full"><div class="chart-card">
+      <div class="chart-title" id="night-chart-title">—</div>
+      <div class="chart-desc">DAILY TREND — HOW EACH NIGHT'S NUMBERS CHANGED OVER TIME</div>
+      <div class="chart-wrap tall"><canvas id="c-night-main"></canvas></div>
     </div></div>
   `;
   let lineChart=null,barChart=null;
@@ -581,16 +645,15 @@ function renderNight(el,D){
     pillRow.appendChild(pill);
   });
   function loadNightChart(ev){
-    document.getElementById('night-chart-title').textContent=ev.name+' by Night Number';
-    document.getElementById('night-bar-title').textContent=ev.name+' per Night · Latest Day';
+    document.getElementById('night-bar-title').textContent=ev.name+' — Total by Night';
+    document.getElementById('night-chart-title').textContent=ev.name+' — Daily Trend by Night';
     const keys=sortDimKeys(Object.keys(ev.data),'night');
     const dates=[...new Set(keys.flatMap(k=>ev.data[k].map(d=>d.date)))].sort();
-    if(lineChart)lineChart.destroy();
-    lineChart=mkChart('c-night-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(k.replace('Night - ','Night '),dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
-    const latestVals=keys.map(k=>{const arr=ev.data[k];return arr&&arr.length?arr[arr.length-1].value:0;});
     if(barChart)barChart.destroy();
-    barChart=mkChart('c-night-bar','bar',keys.map(k=>k.replace('Night - ','')),
-      [{label:'Value',data:latestVals,backgroundColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]),borderWidth:1}]);
+    barChart=mkChart('c-night-bar','bar',keys.map(k=>fmtKey(k)),
+      [{label:'All-Time Total',data:keys.map(k=>sumArr(ev.data[k])),backgroundColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]),borderWidth:1}]);
+    if(lineChart)lineChart.destroy();
+    lineChart=mkChart('c-night-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(fmtKey(k),dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
   }
   if(nightEvents.length)loadNightChart(nightEvents[0]);
 }
@@ -600,19 +663,18 @@ function renderBalance(el,D){
   const playerEvents=getEventsWithDim(D,'players');
   if(!playerEvents.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No player count breakdown data found.</div>';return;}
   el.innerHTML=`
-    <div class="insight"><strong>Game Balance</strong> — How metrics scale with player count. Helps identify if solo players face a very different experience than groups.</div>
+    <div class="insight"><strong>Player Count</strong> — How metrics scale with the number of players in a session. The bar chart shows all-time totals so you can see immediately whether solo or group sessions drive more activity. The line chart shows how each group's numbers changed over time.</div>
     ${sec('Select a Metric')}
     <div class="pill-row" id="balance-pills"></div>
     <div class="chart-grid full"><div class="chart-card">
-      <div class="chart-title" id="balance-chart-title">—</div>
-      <div class="chart-desc">BY PLAYER COUNT IN SESSION</div>
-      <div class="chart-wrap tall"><canvas id="c-balance-main"></canvas></div>
-    </div></div>
-    ${sec('Distribution · Latest Day')}
-    <div class="chart-grid full"><div class="chart-card">
       <div class="chart-title" id="balance-bar-title">—</div>
-      <div class="chart-desc">TOTAL PER PLAYER COUNT · MOST RECENT DAY</div>
-      <div class="chart-wrap"><canvas id="c-balance-bar"></canvas></div>
+      <div class="chart-desc">ALL-TIME TOTAL BY PLAYER COUNT — SOLO VS GROUP SESSIONS</div>
+      <div class="chart-wrap tall"><canvas id="c-balance-bar"></canvas></div>
+    </div></div>
+    <div class="chart-grid full"><div class="chart-card">
+      <div class="chart-title" id="balance-chart-title">—</div>
+      <div class="chart-desc">DAILY TREND — HOW EACH PLAYER COUNT GROUP CHANGED OVER TIME</div>
+      <div class="chart-wrap tall"><canvas id="c-balance-main"></canvas></div>
     </div></div>
   `;
   let lineChart=null,barChart=null;
@@ -624,16 +686,15 @@ function renderBalance(el,D){
     pillRow.appendChild(pill);
   });
   function loadBalanceChart(ev){
-    document.getElementById('balance-chart-title').textContent=ev.name+' by Player Count';
-    document.getElementById('balance-bar-title').textContent=ev.name+' · Latest Day';
+    document.getElementById('balance-bar-title').textContent=ev.name+' — Total by Player Count';
+    document.getElementById('balance-chart-title').textContent=ev.name+' — Daily Trend by Player Count';
     const keys=sortDimKeys(Object.keys(ev.data),'players');
     const dates=[...new Set(keys.flatMap(k=>ev.data[k].map(d=>d.date)))].sort();
-    if(lineChart)lineChart.destroy();
-    lineChart=mkChart('c-balance-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(k,dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
-    const latestVals=keys.map(k=>{const arr=ev.data[k];return arr&&arr.length?arr[arr.length-1].value:0;});
     if(barChart)barChart.destroy();
-    barChart=mkChart('c-balance-bar','bar',keys.map(k=>k.replace('Players - ','')+' player(s)'),
-      [{label:'Value',data:latestVals,backgroundColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]),borderWidth:1}]);
+    barChart=mkChart('c-balance-bar','bar',keys.map(k=>fmtKey(k)),
+      [{label:'All-Time Total',data:keys.map(k=>sumArr(ev.data[k])),backgroundColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]+'cc'),borderColor:keys.map((_,j)=>PALETTE[j%PALETTE.length]),borderWidth:1}]);
+    if(lineChart)lineChart.destroy();
+    lineChart=mkChart('c-balance-main','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(fmtKey(k),dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
   }
   if(playerEvents.length)loadBalanceChart(playerEvents[0]);
 }
@@ -646,12 +707,14 @@ function renderWeapons(el,D){
     <div class="insight"><strong>Weapon & Tool Preference</strong> — Which weapons players use most, and how that shifts over time. Helps identify dominant strategies and underused tools that may need rebalancing.</div>
     ${sec('Select a Metric')}
     <div class="pill-row" id="gun-pills"></div>
-    <div class="chart-grid">
-      <div class="chart-card"><div class="chart-title" id="gun-donut-title">—</div><div class="chart-desc">ALL-TIME SHARE BY WEAPON</div><div class="chart-wrap" style="height:240px"><canvas id="c-gun-donut"></canvas></div></div>
-      <div class="chart-card"><div class="chart-title" id="gun-line-title">—</div><div class="chart-desc">DAILY BREAKDOWN BY WEAPON TYPE</div><div class="chart-wrap tall"><canvas id="c-gun-line"></canvas></div></div>
+    <div class="chart-grid full">
+      <div class="chart-card"><div class="chart-title" id="gun-bar-title">—</div><div class="chart-desc">ALL-TIME TOTAL BY WEAPON — WHICH WEAPONS ARE USED MOST?</div><div class="chart-wrap"><canvas id="c-gun-bar"></canvas></div></div>
+    </div>
+    <div class="chart-grid full">
+      <div class="chart-card"><div class="chart-title" id="gun-line-title">—</div><div class="chart-desc">DAILY BREAKDOWN BY WEAPON TYPE — HOW USAGE SHIFTS OVER TIME</div><div class="chart-wrap tall"><canvas id="c-gun-line"></canvas></div></div>
     </div>
   `;
-  let donutChart=null,lineChart=null;
+  let barChart=null,lineChart=null;
   const pillRow=document.getElementById('gun-pills');
   gunEvents.forEach((ev,i)=>{
     const pill=document.createElement('button');
@@ -660,15 +723,19 @@ function renderWeapons(el,D){
     pillRow.appendChild(pill);
   });
   function loadGunChart(ev){
-    document.getElementById('gun-donut-title').textContent=ev.name+' — Weapon Share';
+    document.getElementById('gun-bar-title').textContent=ev.name+' — All-Time by Weapon';
     document.getElementById('gun-line-title').textContent=ev.name+' — Daily by Weapon';
     const keys=sortDimKeys(Object.keys(ev.data),'gun');
     const totals=keys.map(k=>sumArr(ev.data[k]));
+    const total=totals.reduce((a,b)=>a+b,0);
     const dates=[...new Set(keys.flatMap(k=>ev.data[k].map(d=>d.date)))].sort();
-    if(donutChart)donutChart.destroy();
-    donutChart=new Chart(document.getElementById('c-gun-donut'),{type:'doughnut',data:{labels:keys.map(k=>k.replace('Gun - ','')),datasets:[{data:totals,backgroundColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]),borderColor:'#13151f',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:true,position:'right',labels:{color:P.muted,font:{family:'JetBrains Mono',size:10},boxWidth:10}},tooltip:{backgroundColor:'#13151f',borderColor:'#1e2135',borderWidth:1,callbacks:{label:ctx=>{const t=totals.reduce((a,b)=>a+b,0);return` ${(ctx.parsed/t*100).toFixed(1)}%`;}}}}}});
+    if(barChart)barChart.destroy();
+    barChart=mkChart('c-gun-bar','bar',keys.map(k=>fmtKey(k)),
+      [{label:'All-Time Total',data:totals,backgroundColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]+'cc'),borderColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]),borderWidth:1}],
+      {tooltipExtra:(v)=>total>0?` (${(v/total*100).toFixed(1)}%)`:''}
+    );
     if(lineChart)lineChart.destroy();
-    lineChart=mkChart('c-gun-line','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(k.replace('Gun - ',''),dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
+    lineChart=mkChart('c-gun-line','line',dates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries(ev.data[k].map(d=>[d.date,d.value]));return mkDs(fmtKey(k),dates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
   }
   if(gunEvents.length)loadGunChart(gunEvents[0]);
 }
@@ -728,23 +795,22 @@ function renderPlayers(el,D){
       ${d7.length?cc('Day 7 Retention','% RETURNING AFTER 1 WEEK','c-d7'):''}
     </div>
     ${age||gender?sec('Demographics'):''}
-    <div class="donut-row">
-      ${age?`<div class="donut-card"><div class="chart-title" style="margin-bottom:14px">Age Group</div><div class="donut-wrap"><canvas id="c-age"></canvas></div><div class="donut-labels" id="age-lbl"></div></div>`:''}
-      ${gender?`<div class="donut-card"><div class="chart-title" style="margin-bottom:14px">Gender</div><div class="donut-wrap"><canvas id="c-gender"></canvas></div><div class="donut-labels" id="gender-lbl"></div></div>`:''}
+    <div class="chart-grid">
+      ${age?cc('Age Group Distribution','% OF MONTHLY ACTIVE PLAYERS BY AGE','c-age'):''}
+      ${gender?cc('Gender Distribution','% OF MONTHLY ACTIVE PLAYERS BY GENDER','c-gender'):''}
     </div>
   `;
   if(src){const cur=src.series.current||[];const prev=src.series.previous||[];mkChart('c-src-full','line',cur.map(d=>Math.round(d.seconds/60)+'m'),[mkDs('Current',cur.map(d=>d.pct),P.blue),mkDs('Previous',prev.map(d=>d.pct),P.muted,{dash:[5,4]})],{pct:true});}
   if(d1.length)mkChart('c-d1','bar',d1.map(d=>fmtD(d.date)),[{label:'Day 1',data:d1.map(d=>d.value),backgroundColor:P.green+'88',borderColor:P.green,borderWidth:1}],{pct:true});
   if(d7.length)mkChart('c-d7','bar',d7.map(d=>fmtD(d.date)),[{label:'Day 7',data:d7.map(d=>d.value),backgroundColor:P.yellow+'88',borderColor:P.yellow,borderWidth:1}],{pct:true});
-  function donut(id,lblId,data,colors){
+  function demoBar(id,data,colors){
     if(!document.getElementById(id))return;
-    new Chart(document.getElementById(id),{type:'doughnut',data:{labels:data.map(d=>d.group),datasets:[{data:data.map(d=>d.value),backgroundColor:colors,borderColor:'#13151f',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false},tooltip:{backgroundColor:'#13151f',borderColor:'#1e2135',borderWidth:1,callbacks:{label:ctx=>{const t=data.reduce((a,b)=>a+b.value,0);return` ${(ctx.parsed/t*100).toFixed(1)}%`;}}}}}});
     const tot=data.reduce((a,b)=>a+b.value,0);
-    const lbl=document.getElementById(lblId);
-    data.forEach((d,i)=>{lbl.innerHTML+=`<div class="donut-row-item"><span style="color:${colors[i]}">${d.group}</span><span>${(d.value/tot*100).toFixed(0)}%</span></div>`;});
+    const pcts=data.map(d=>tot>0?+(d.value/tot*100).toFixed(1):0);
+    new Chart(document.getElementById(id),{type:'bar',data:{labels:data.map(d=>d.group),datasets:[{label:'% of Players',data:pcts,backgroundColor:colors,borderColor:colors.map(c=>c),borderWidth:1}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#13151f',borderColor:'#1e2135',borderWidth:1,titleColor:'#e8eaf6',bodyColor:P.muted,callbacks:{label:ctx=>`  ${ctx.parsed.x.toFixed(1)}%`}}},scales:{x:{ticks:{color:P.muted,font:{family:'JetBrains Mono',size:10},callback:v=>v+'%'},grid:{color:'#1e2135'},max:100},y:{ticks:{color:P.muted,font:{family:'JetBrains Mono',size:10}},grid:{color:'#1e2135'}}}}});
   }
-  if(age)donut('c-age','age-lbl',age.data,[P.blue,P.green,P.yellow,P.pink,P.purple]);
-  if(gender)donut('c-gender','gender-lbl',gender.data,[P.blue,P.pink,P.muted]);
+  if(age)demoBar('c-age',age.data,[P.blue,P.green,P.yellow,P.pink,P.purple]);
+  if(gender)demoBar('c-gender',gender.data,[P.blue,P.pink,P.muted]);
 }
 
 // ── GENERAL STATS TAB ──
