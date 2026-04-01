@@ -293,9 +293,12 @@ async function handleZip(file){
     const experiences={};
     for(const[path,content]of Object.entries(csvFiles)){
       const parts=path.replace(/\\/g,'/').split('/');
-      const expIdx=parts.findIndex(p=>/^\d{8,}$/.test(p));
+      // Match pure ID (7309522962) OR Name_ID (AlienAttack_7309522962)
+      const expIdx=parts.findIndex(p=>/^\d{8,}$/.test(p)||/^.+_\d{8,}$/.test(p));
       if(expIdx===-1)continue;
-      const expId=parts[expIdx];
+      // Extract just the numeric ID from either format
+      const folderPart=parts[expIdx];
+      const expId=folderPart.match(/(\d{8,})$/)[1];
       if(!experiences[expId])experiences[expId]={standard:{},custom:{}};
       const ceIdx=parts.indexOf('custom-events');
       if(ceIdx!==-1){
