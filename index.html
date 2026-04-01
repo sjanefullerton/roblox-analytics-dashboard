@@ -551,14 +551,14 @@ function renderTabs(){
   const hasSessionDim=dims.session&&dims.session.length>0;
   const hasOtherDim=(dims.night&&dims.night.length>0)||(dims.players&&dims.players.length>0)||(dims.gun&&dims.gun.length>0)||(dims.reason&&dims.reason.length>0);
   tabs.push({id:'overview',label:'Overview'});
-  if(hasCustom) tabs.push({id:'totals',label:'Event Trends'});
-  if(dims.night&&dims.night.length>0) tabs.push({id:'night',label:'Level / Night'});
   if(isDeepAnalysis&&hasSessionDim) tabs.push({id:'session_learning',label:'Session Learning'});
+  if(isDeepAnalysis&&hasSessionDim&&hasOtherDim) tabs.push({id:'game_balance',label:'Game Balance'});
+  if(dims.night&&dims.night.length>0) tabs.push({id:'night',label:'Level / Night'});
   if(hasSessionDim) tabs.push({id:'onboarding',label:'Session Curve'});
   if(dims.players&&dims.players.length>0) tabs.push({id:'balance',label:'Player Count'});
   if(dims.gun&&dims.gun.length>0) tabs.push({id:'weapons',label:'Weapons & Tools'});
   if(dims.reason&&dims.reason.length>0) tabs.push({id:'reason',label:'Reason Breakdown'});
-  if(isDeepAnalysis&&hasSessionDim&&hasOtherDim) tabs.push({id:'game_balance',label:'Game Balance'});
+  if(hasCustom) tabs.push({id:'totals',label:'Event Trends'});
   tabs.push({id:'players',label:'Players'});
   tabs.push({id:'stats',label:'Game Stats'});
 
@@ -943,7 +943,6 @@ function renderAllTabs(){
   const hasRetention=expIds.some(id=>['d1_retention','d7_retention','stickiness'].some(k=>allData[id].standard[k]?.series?.total?.filter(d=>d.value>0).length>0));
 
   const tabs=[{id:'cmp_summary',label:'Summary'}];
-  if(allEventNames.length)tabs.push({id:'cmp_events',label:'Event Comparison'});
   if(hasRetention)tabs.push({id:'cmp_retention',label:'Retention'});
   tabs.push({id:'cmp_stats',label:'Stats Overview'});
 
@@ -981,7 +980,6 @@ function buildAllPage(name){
   const el=document.getElementById('page-'+name);
   if(!el)return;
   if(name==='cmp_summary')renderCmpSummary(el);
-  else if(name==='cmp_events')renderCmpEvents(el);
   else if(name==='cmp_retention')renderCmpRetention(el);
   else if(name==='cmp_stats')renderCmpStats(el);
 }
@@ -1500,67 +1498,101 @@ function renderSessionCharts(container,seriesData,chartSuffix,statLabel){
 }
 
 // Render the drill-down view (replaces tab innerHTML)
-function renderSlDrillDown(el,D,stat,normalized){
+function renderSlDrillDown(el,D,stat,normalizedInitial){
+  const hasNightSurvived=!!(D.custom['NightSurvived']?.dimensions?.session);
   const availDims=Object.keys(D.custom[stat.event]?.dimensions||{}).filter(d=>d!=='session');
-  const seriesData=normalized?buildNormSeries(D,stat.event):buildRawSeries(D,stat.event);
-  const normLabel=normalized?' (per player-night)':'';
-
-  let dimChartHtml='';
+  let normalized=hasNightSurvived?normalizedInitial:false;
   let activeDim=availDims[0]||null;
 
-  el.innerHTML=`
-    <div style="margin-bottom:24px;">
-      <button id="sl-back-btn" style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:8px 16px;cursor:pointer;">← Back to Overview</button>
-    </div>
-    <div class="insight"><strong>${stat.label}${normLabel}</strong> — Session learning curve and onboarding trend.${stat.failureSignal?' ⚠️ This is a failure signal — lower values across sessions indicate improvement.':' Rising values across sessions indicate players are learning.'}</div>
-    <div id="sl-trend-container"></div>
-    ${availDims.length?`
-      ${sec('Breakdown by Pressure Dimension')}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;" id="sl-dim-pills">
-        ${availDims.map(d=>`<button class="pill${d===activeDim?' active':''}" data-dim="${d}">${DIM_LABELS[d]||d}</button>`).join('')}
+  function normLabel(){return normalized?' (per player-night)':'';}
+
+  function rebuildTrend(){
+    const seriesData=normalized?buildNormSeries(D,stat.event):buildRawSeries(D,stat.event);
+    const container=document.getElementById('sl-dd-trend-container');
+    if(container)renderSessionCharts(container,seriesData,stat.event+'_dd'+normalized,stat.label+normLabel());
+  }
+
+  function render(){
+    const toggleHtml=hasNightSurvived?`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">View:</span>
+        <button id="sl-dd-raw-btn" class="pill${!normalized?' active':''}">Raw Totals</button>
+        <button id="sl-dd-norm-btn" class="pill${normalized?' active':''}">Normalized (per player-night)</button>
+      </div>`:'';
+
+    el.innerHTML=`
+      <div style="margin-bottom:24px;">
+        <button id="sl-back-btn" style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:8px 16px;cursor:pointer;">← Back to Overview</button>
       </div>
-      <div id="sl-dim-charts"></div>
-    `:''}
-  `;
+      <div class="insight"><strong>${stat.label}${normLabel()}</strong> — Session learning curve and onboarding trend.${stat.failureSignal?' ⚠️ This is a failure signal — lower values across sessions indicate improvement.':' Rising values across sessions indicate players are learning.'}</div>
+      ${toggleHtml}
+      <div id="sl-dd-trend-container"></div>
+      ${availDims.length?`
+        ${sec('Breakdown by Pressure Dimension')}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;" id="sl-dim-pills">
+          ${availDims.map(d=>`<button class="pill${d===activeDim?' active':''}" data-dim="${d}">${DIM_LABELS[d]||d}</button>`).join('')}
+        </div>
+        <div id="sl-dim-charts"></div>
+      `:''}
+    `;
 
-  document.getElementById('sl-back-btn').onclick=()=>renderSessionLearning(el,D);
-  renderSessionCharts(document.getElementById('sl-trend-container'),seriesData,stat.event+'_dd',stat.label+normLabel);
+    document.getElementById('sl-back-btn').onclick=()=>renderSessionLearning(el,D);
 
-  if(availDims.length){
-    const dimPills=document.getElementById('sl-dim-pills');
-    const dimChartContainer=document.getElementById('sl-dim-charts');
-
-    function loadDimCharts(dim){
-      activeDim=dim;
-      dimPills.querySelectorAll('.pill').forEach(p=>p.classList.toggle('active',p.dataset.dim===dim));
-      const ev=D.custom[stat.event];
-      const dimData=ev?.dimensions?.[dim]||{};
-      const keys=sortDimKeys(Object.keys(dimData),dim);
-      const allDates=[...new Set(keys.flatMap(k=>(dimData[k]||[]).map(d=>d.date)))].sort();
-      const totals=keys.map(k=>sumArr(dimData[k]||[]));
-      const bid=`c-sl-dim-bar-${stat.event}-${dim}`;
-      const lid=`c-sl-dim-line-${stat.event}-${dim}`;
-      dimChartContainer.innerHTML=`
-        <div class="chart-grid full"><div class="chart-card">
-          <div class="chart-title">${stat.label} — All-Time Total by ${DIM_LABELS[dim]||dim}</div>
-          <div class="chart-desc">ALL-TIME TOTALS PER BUCKET</div>
-          <div class="chart-wrap tall"><canvas id="${bid}"></canvas></div>
-        </div></div>
-        <div class="chart-grid full"><div class="chart-card">
-          <div class="chart-title">${stat.label} — Daily Trend by ${DIM_LABELS[dim]||dim}</div>
-          <div class="chart-desc">HOW EACH BUCKET CHANGED OVER TIME</div>
-          <div class="chart-wrap tall"><canvas id="${lid}"></canvas></div>
-        </div></div>
-      `;
-      setTimeout(()=>{
-        mkChart(bid,'bar',keys.map(k=>fmtKey(k)),[{label:'All-Time Total',data:totals,backgroundColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]+'cc'),borderColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]),borderWidth:1}]);
-        mkChart(lid,'line',allDates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries((dimData[k]||[]).map(d=>[d.date,d.value]));return mkDs(fmtKey(k),allDates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
-      },0);
+    if(hasNightSurvived){
+      document.getElementById('sl-dd-raw-btn').onclick=()=>{
+        normalized=false;
+        document.getElementById('sl-dd-raw-btn').classList.add('active');
+        document.getElementById('sl-dd-norm-btn').classList.remove('active');
+        rebuildTrend();
+      };
+      document.getElementById('sl-dd-norm-btn').onclick=()=>{
+        normalized=true;
+        document.getElementById('sl-dd-norm-btn').classList.add('active');
+        document.getElementById('sl-dd-raw-btn').classList.remove('active');
+        rebuildTrend();
+      };
     }
 
-    dimPills.querySelectorAll('.pill').forEach(p=>p.onclick=()=>loadDimCharts(p.dataset.dim));
-    if(activeDim)loadDimCharts(activeDim);
+    rebuildTrend();
+
+    if(availDims.length){
+      const dimPills=document.getElementById('sl-dim-pills');
+      const dimChartContainer=document.getElementById('sl-dim-charts');
+
+      function loadDimCharts(dim){
+        activeDim=dim;
+        dimPills.querySelectorAll('.pill').forEach(p=>p.classList.toggle('active',p.dataset.dim===dim));
+        const ev=D.custom[stat.event];
+        const dimData=ev?.dimensions?.[dim]||{};
+        const keys=sortDimKeys(Object.keys(dimData),dim);
+        const allDates=[...new Set(keys.flatMap(k=>(dimData[k]||[]).map(d=>d.date)))].sort();
+        const totals=keys.map(k=>sumArr(dimData[k]||[]));
+        const bid=`c-sl-dim-bar-${stat.event}-${dim}`;
+        const lid=`c-sl-dim-line-${stat.event}-${dim}`;
+        dimChartContainer.innerHTML=`
+          <div class="chart-grid full"><div class="chart-card">
+            <div class="chart-title">${stat.label} — All-Time Total by ${DIM_LABELS[dim]||dim}</div>
+            <div class="chart-desc">ALL-TIME TOTALS PER BUCKET</div>
+            <div class="chart-wrap tall"><canvas id="${bid}"></canvas></div>
+          </div></div>
+          <div class="chart-grid full"><div class="chart-card">
+            <div class="chart-title">${stat.label} — Daily Trend by ${DIM_LABELS[dim]||dim}</div>
+            <div class="chart-desc">HOW EACH BUCKET CHANGED OVER TIME</div>
+            <div class="chart-wrap tall"><canvas id="${lid}"></canvas></div>
+          </div></div>
+        `;
+        setTimeout(()=>{
+          mkChart(bid,'bar',keys.map(k=>fmtKey(k)),[{label:'All-Time Total',data:totals,backgroundColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]+'cc'),borderColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]),borderWidth:1}]);
+          mkChart(lid,'line',allDates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries((dimData[k]||[]).map(d=>[d.date,d.value]));return mkDs(fmtKey(k),allDates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
+        },0);
+      }
+
+      dimPills.querySelectorAll('.pill').forEach(p=>p.onclick=()=>loadDimCharts(p.dataset.dim));
+      if(activeDim)loadDimCharts(activeDim);
+    }
   }
+
+  render();
 }
 
 // Main render for Session Learning tab
@@ -1568,7 +1600,7 @@ function renderSessionLearning(el,D){
   const availStats=SESSION_LEARNING_STATS.filter(s=>D.custom[s.event]?.dimensions?.session);
   if(!availStats.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No session breakdown data found for learning stats.</div>';return;}
 
-  let normalized=false;
+  let normalized=true;
   const hasNightSurvived=!!(D.custom['NightSurvived']?.dimensions?.session);
 
   // Build snapshot card values
@@ -1640,8 +1672,8 @@ function renderSessionLearning(el,D){
   const normToggle=hasNightSurvived?`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
       <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">View:</span>
-      <button id="sl-raw-btn" class="pill active">Raw Totals</button>
-      <button id="sl-norm-btn" class="pill">Normalized (per player-night)</button>
+      <button id="sl-raw-btn" class="pill">Raw Totals</button>
+      <button id="sl-norm-btn" class="pill active">Normalized (per player-night)</button>
       <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);">Normalized divides by NightSurvived per session to account for S1 having ~6× more players</span>
     </div>`:'';
 
