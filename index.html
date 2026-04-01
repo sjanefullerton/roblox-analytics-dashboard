@@ -1357,23 +1357,9 @@ function renderCmpStats(el){
         <tbody>${tableRows}</tbody>
       </table>
     </div>
-    ${allEventNames.length?`
-      ${sec('Custom Event All-Time Totals')}
-      <div class="chart-card" style="margin-bottom:24px;overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;min-width:400px">
-          <thead><tr><th style="${thStyle}">Event</th>${hdrCells}</tr></thead>
-          <tbody>${eventRows}</tbody>
-        </table>
-      </div>
-    `:''}
     ${sec('Visualize Any Metric Over Time')}
     ${ctrlRow(ctrlLabel('Metric')+`<select id="cmp-stats-sel" style="${selStyle}min-width:240px">${CHART_METRICS.map(m=>`<option value="${m.value}">${m.label}</option>`).join('')}</select>`)}
     <div class="chart-grid full">${cc('Selected Metric — All Experiences','ONE LINE PER EXPERIENCE · COMPARE OVER TIME','c-cmp-stats-main','tall')}</div>
-    ${allEventNames.length?`
-      ${sec('Visualize Any Custom Event Over Time')}
-      ${ctrlRow(ctrlLabel('Event')+`<select id="cmp-stats-evsel" style="${selStyle}min-width:200px">${allEventNames.map(n=>`<option value="${n}">${n}</option>`).join('')}</select>`)}
-      <div class="chart-grid full">${cc('Selected Event — All Experiences','ONE LINE PER EXPERIENCE · DAILY TOTALS','c-cmp-stats-ev','tall')}</div>
-    `:''}
   `;
 
   let statsChart=null,evChart=null;
@@ -1402,8 +1388,6 @@ function renderCmpStats(el){
 
   const mSel=document.getElementById('cmp-stats-sel');
   if(mSel){drawStatsChart('dau');mSel.addEventListener('change',()=>drawStatsChart(mSel.value));}
-  const eSel=document.getElementById('cmp-stats-evsel');
-  if(eSel&&allEventNames.length){drawEvChart(allEventNames[0]);eSel.addEventListener('change',()=>drawEvChart(eSel.value));}
 }
 
 // ══════════════════════════════════════════════════════════════
