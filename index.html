@@ -1661,14 +1661,9 @@ function renderSessionLearning(el,D){
     }).join('');
   }
 
-  // Selected stat for trend charts (default: first stat)
-  let selectedStat=availStats[0];
+  // selectedStat and buildTrendSection are defined after el.innerHTML below
 
-  function buildTrendSection(norm){
-    const seriesData=norm?buildNormSeries(D,selectedStat.event):buildRawSeries(D,selectedStat.event);
-    const container=document.getElementById('sl-trend-section');
-    if(container)renderSessionCharts(container,seriesData,'main_'+selectedStat.event,selectedStat.label+(norm?' (per player-night)':''));
-  }
+  let selectedStat=availStats[0];
 
   const normToggle=hasNightSurvived?`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
@@ -1679,36 +1674,42 @@ function renderSessionLearning(el,D){
     </div>`:'';
 
   el.innerHTML=`
-    <div class="insight"><strong>Session Learning</strong> — How well are players learning each mechanic over successive sessions? Cards show average values per session group. Green border = players are improving. Click any card to drill into trends and dimension breakdowns. ${hasNightSurvived?'Toggle <em>Normalized</em> to correct for S1 having far more players than S3+.':''}</div>
+    <div class="insight"><strong>Session Learning</strong> — How well are players learning each mechanic over successive sessions? Cards show average values per session group. Green border = players are improving. Click <strong>DRILL DOWN ↗</strong> on any card for full trend charts and dimension breakdowns. ${hasNightSurvived?'Toggle <em>Normalized</em> to correct for S1 having far more players than S3+.':''}</div>
     ${normToggle}
     ${sec('Key Learning Metrics — Average Per Session Group')}
     <div class="chart-grid thirds" id="sl-cards-grid" style="margin-bottom:32px;"></div>
-    ${sec('Trend Over Time — Click a Metric Card to Change')}
+    ${sec('Trend Over Time')}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;">Metric:</span>
+      <select id="sl-trend-select" style="${selStyle}">
+        ${availStats.map(s=>`<option value="${s.event}">${s.label}</option>`).join('')}
+      </select>
+    </div>
     <div id="sl-trend-section"></div>
   `;
 
-  document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized,selectedStat);
+  document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized);
 
-  // Wire card clicks
+  // Wire drill-down buttons on cards
   function wireCards(){
-    document.querySelectorAll('.sl-stat-card').forEach(card=>{
-      card.onmouseenter=()=>{if(selectedStat&&selectedStat.event!==card.dataset.stat)card.style.boxShadow='0 0 20px rgba(91,140,255,.15)';};
-      card.onmouseleave=()=>{if(selectedStat&&selectedStat.event!==card.dataset.stat)card.style.boxShadow='';};
-      card.onclick=(e)=>{
-        // If clicking the drill-down button, go to drill-down view
-        if(e.target.classList.contains('sl-drill-btn')){
-          renderSlDrillDown(el,D,availStats.find(s=>s.event===e.target.dataset.stat),normalized);
-          return;
-        }
-        // Otherwise update the trend section
-        selectedStat=availStats.find(s=>s.event===card.dataset.stat);
-        document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized,selectedStat);
-        wireCards();
-        buildTrendSection(normalized);
+    document.querySelectorAll('.sl-drill-btn').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        renderSlDrillDown(el,D,availStats.find(s=>s.event===btn.dataset.stat),normalized);
       };
     });
   }
   wireCards();
+
+  // Dropdown drives the trend section
+  const trendSel=document.getElementById('sl-trend-select');
+  function buildTrendSection(norm){
+    selectedStat=availStats.find(s=>s.event===trendSel.value)||availStats[0];
+    const seriesData=norm?buildNormSeries(D,selectedStat.event):buildRawSeries(D,selectedStat.event);
+    const container=document.getElementById('sl-trend-section');
+    if(container)renderSessionCharts(container,seriesData,'main_'+selectedStat.event,selectedStat.label+(norm?' (per player-night)':''));
+  }
+  trendSel.onchange=()=>buildTrendSection(normalized);
   buildTrendSection(normalized);
 
   if(hasNightSurvived){
@@ -1716,16 +1717,12 @@ function renderSessionLearning(el,D){
       normalized=false;
       document.getElementById('sl-raw-btn').classList.add('active');
       document.getElementById('sl-norm-btn').classList.remove('active');
-      document.getElementById('sl-cards-grid').innerHTML=buildCards(false,selectedStat);
-      wireCards();
       buildTrendSection(false);
     };
     document.getElementById('sl-norm-btn').onclick=()=>{
       normalized=true;
       document.getElementById('sl-norm-btn').classList.add('active');
       document.getElementById('sl-raw-btn').classList.remove('active');
-      document.getElementById('sl-cards-grid').innerHTML=buildCards(true,selectedStat);
-      wireCards();
       buildTrendSection(true);
     };
   }
