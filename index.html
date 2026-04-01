@@ -242,6 +242,25 @@ dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragging'))
 dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragging');const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.zip'))handleZip(f);else alert('Please drop a .zip file.');});
 dropZone.addEventListener('click',e=>{if(e.target.tagName!=='SPAN')fileInput.click();});
 fileInput.addEventListener('change',()=>{if(fileInput.files[0])handleZip(fileInput.files[0]);});
+
+// Listen for zip data sent from the browser extension
+window.addEventListener('message', async (event) => {
+  if (event.data && event.data.type === 'ROBLOX_EXPORT_ZIP' && event.data.zipBase64) {
+    try {
+      // Convert base64 back to a Blob and pass it to handleZip
+      const binary = atob(event.data.zipBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/zip' });
+      // Create a File so handleZip gets a .name it can check
+      const file = new File([blob], 'roblox-exports.zip', { type: 'application/zip' });
+      handleZip(file);
+    } catch(e) {
+      console.error('Failed to receive zip from extension:', e);
+    }
+  }
+});
+
 function setProgress(pct,msg){document.getElementById('progress-fill').style.width=pct+'%';document.getElementById('progress-log').textContent=msg;}
 
 let allData={},currentExpId=null,builtPages={};
