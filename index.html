@@ -263,14 +263,14 @@ window.addEventListener('message', async (event) => {
 
 function setProgress(pct,msg){document.getElementById('progress-fill').style.width=pct+'%';document.getElementById('progress-log').textContent=msg;}
 
-let allData={},currentExpId=null,builtPages={};
+let allData={},expNames={},currentExpId=null,builtPages={};
 
 function resetToUpload(){
   document.getElementById('upload-screen').style.display='flex';
   document.getElementById('progress-screen').style.display='none';
   document.getElementById('dashboard-screen').style.display='none';
   Chart.helpers.each(Chart.instances,c=>c.destroy());
-  builtPages={};allData={};currentExpId=null;fileInput.value='';
+  builtPages={};allData={};expNames={};currentExpId=null;fileInput.value='';
 }
 
 // ── ZIP PROCESSING ──
@@ -299,7 +299,15 @@ async function handleZip(file){
       // Extract just the numeric ID from either format
       const folderPart=parts[expIdx];
       const expId=folderPart.match(/(\d{8,})$/)[1];
-      if(!experiences[expId])experiences[expId]={standard:{},custom:{}};
+      if(!experiences[expId]){
+        // Derive display name from folder: "AlienAttack_7309522962" → "Alien Attack"
+        // Insert spaces before capitals, fall back to just ID if no name prefix
+        const namePrefix=folderPart.replace(/_?\d{8,}$/,'');
+        const displayName=namePrefix
+          ?namePrefix.replace(/([A-Z])/g,' $1').trim()
+          :'';
+        experiences[expId]={standard:{},custom:{},_folderName:displayName||expId};
+      }
       const ceIdx=parts.indexOf('custom-events');
       if(ceIdx!==-1){
         const afterCE=parts.slice(ceIdx+1);
@@ -324,10 +332,11 @@ async function handleZip(file){
     setProgress(55,'Cleaning and normalizing data…');
     const expIds=Object.keys(experiences);
     if(!expIds.length)throw new Error('No experience folders found. Check your zip structure.');
-    allData={};
+    allData={};expNames={};
     expIds.forEach((expId,i)=>{
       setProgress(55+(i/expIds.length)*35,`Processing experience ${expId}…`);
       allData[expId]=processExperience(experiences[expId]);
+      expNames[expId]=experiences[expId]._folderName||expId;
     });
     setProgress(95,'Building dashboard…');
     await new Promise(r=>setTimeout(r,200));
@@ -528,6 +537,8 @@ function renderReason(el,D){
 
 // ── MULTI-EXP HELPERS ──
 const shortId=id=>id.length>8?'…'+id.slice(-6):id;
+const expLabel=id=>{const n=expNames[id];return n&&n!==id?n+' — '+id:id;};
+const expShortLabel=id=>{const n=expNames[id];return n&&n!==id?n:id;};
 const getExpIds=()=>Object.keys(allData);
 const EXP_COLORS=[P.blue,P.green,P.yellow,P.pink,P.purple,P.cyan,P.orange,P.teal,P.lime,P.rose];
 
@@ -551,7 +562,7 @@ function buildDashboard(expIds){
   expIds.forEach(id=>{
     const btn=document.createElement('button');
     btn.className='exp-btn'+(id===currentExpId?' active':'');
-    btn.textContent=id;
+    btn.textContent=expShortLabel(id);
     btn.onclick=()=>{
       document.querySelectorAll('.exp-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');currentExpId=id;builtPages={};
@@ -610,7 +621,7 @@ function renderTabs(){
 
   const customCount=Object.keys(D.custom).length;
   const dimNames=Object.keys(dims).join(', ');
-  document.getElementById('dash-title').textContent=`Experience ${currentExpId}`;
+  document.getElementById('dash-title').textContent=expLabel(currentExpId);
   const dimLabels={session:'learning curve',night:'night-by-night',players:'player count',gun:'weapons'};
   const dimDisplay=Object.keys(dims).map(d=>dimLabels[d]||d).join(', ');
   document.getElementById('dash-meta').textContent=`${customCount} custom events · ${dimDisplay||'totals only'} · ${tabs.length} tabs`;
