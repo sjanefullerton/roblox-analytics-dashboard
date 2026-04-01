@@ -959,63 +959,156 @@ function renderCmpSummary(el){
   const colorNames=['blue','green','yellow','pink','purple','cyan'];
   const colorVars=[P.blue,P.green,P.yellow,P.pink,P.purple,P.cyan];
 
+  // Stat cards — peak DAU + avg session length only
   const cards=expIds.map((id,i)=>{
     const D=allData[id];
     const dau=D.standard.dau?.series?.total?.filter(d=>d.value>0)||[];
     const sl=D.standard.avg_session_len?.series?.total?.filter(d=>d.value>0)||[];
-    const customCount=Object.keys(D.custom).length;
     const peakDAU=dau.length?maxArr(dau):0;
     const recent=sl.slice(-7);
     const avgSL=recent.length?(recent.reduce((a,b)=>a+b.value,0)/recent.length).toFixed(1):'—';
     const c=colorNames[i%6];const cv=colorVars[i%6];
-    return`<div class="stat-card ${c}"><div class="stat-label">Exp ${shortId(id)}</div><div class="stat-value" style="color:${cv}">${fmtN(peakDAU)}</div><div class="stat-sub">${avgSL} min avg · ${customCount} events</div></div>`;
+    return`<div class="stat-card ${c}"><div class="stat-label">Exp ${shortId(id)}</div><div class="stat-value" style="color:${cv}">${fmtN(peakDAU)}</div><div class="stat-sub">peak DAU · ${avgSL} min avg session</div></div>`;
   }).join('');
 
-  const allEventNames=[...new Set(expIds.flatMap(id=>Object.keys(allData[id].custom)))];
+  const ALL_METRICS=[
+    {key:'dau',label:'Daily Active Users'},
+    {key:'avg_session_len',label:'Avg Session Length (min)'},
+    {key:'sessions',label:'Sessions per Day'},
+    {key:'unique_players',label:'Unique Players'},
+    {key:'d1_retention',label:'Day 1 Retention',pct:true},
+    {key:'d7_retention',label:'Day 7 Retention',pct:true},
+    {key:'d30_retention',label:'Day 30 Retention',pct:true},
+    {key:'stickiness',label:'DAU/MAU Stickiness',pct:true},
+    {key:'avg_playtime',label:'Avg Playtime / DAU (min)'},
+    {key:'daily_revenue',label:'Daily Revenue (Robux)'},
+    {key:'paying_users',label:'Paying Users'},
+    {key:'payer_cvr',label:'Payer Conversion Rate',pct:true},
+  ];
+  const availMetrics=ALL_METRICS.filter(m=>expIds.some(id=>allData[id].standard[m.key]?.series?.total?.filter(d=>d.value>0).length>0));
+
+  const expPillsHtml=expIds.map((id,i)=>`<button class="pill active" id="cmp-exp-pill-${i}" style="border-color:${colorVars[i%6]};color:${colorVars[i%6]};background:${colorVars[i%6]}18">${shortId(id)}</button>`).join('');
 
   el.innerHTML=`
-    <div class="insight"><strong>Summary</strong> — Comparing all ${expIds.length} experiences side by side. Peak DAU and session stats are shown per experience below. Switch to <em>Event Comparison</em>, <em>Retention</em>, or <em>Stats Overview</em> tabs to drill deeper into specific metrics.</div>
-    ${sec('Peak DAU per Experience')}
+    <div class="insight"><strong>Summary</strong> — Pick any standard metric to compare across experiences. Select which experiences to show using the pills, switch between a line chart (trends over time) and bar chart (period average per experience), and look for the dashed line — that's the Roblox platform benchmark when available.</div>
+    ${sec('Key Stats per Experience')}
     <div class="stat-row">${cards}</div>
-    <div class="chart-grid full">${cc('Daily Active Users — All Experiences','PLAYER TRAFFIC OVER TIME · ONE LINE PER EXPERIENCE','c-cmp-dau','tall')}</div>
-    ${allEventNames.length?`
-      ${sec('Event Volume Comparison')}
-      ${ctrlRow(ctrlLabel('Event')+`<select id="cmp-sum-ev" style="${selStyle}min-width:180px">${allEventNames.map(n=>`<option value="${n}">${n}</option>`).join('')}</select>`)}
-      <div class="chart-grid">
-        ${cc('Daily Event Trend — All Experiences','HOW EACH EXPERIENCE TRACKS THIS EVENT OVER TIME','c-cmp-sum-line')}
-        ${cc('All-Time Event Total by Experience','TOTAL EVENT VOLUME PER EXPERIENCE','c-cmp-sum-bar')}
+    ${sec('Compare Experiences')}
+    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:20px;">
+      <div>
+        ${ctrlLabel('Metric')}
+        <div style="margin-top:6px"><select id="cmp-sum-metric" style="${selStyle}min-width:240px">${availMetrics.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select></div>
       </div>
-    `:''}
+      <div>
+        ${ctrlLabel('Chart Type')}
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button id="cmp-btn-line" class="pill active" style="padding:6px 16px">Line</button>
+          <button id="cmp-btn-bar" class="pill" style="padding:6px 16px">Bar</button>
+        </div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        ${ctrlLabel('Experiences')}
+        <div class="pill-row" style="margin-top:6px">${expPillsHtml}</div>
+      </div>
+    </div>
+    <div class="chart-grid full">${cc('—','—','c-cmp-sum-main','tall')}</div>
+    <div id="cmp-sum-bench-note" style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--muted);margin-top:-16px;margin-bottom:24px;display:none">
+      ── dashed line is the Roblox platform benchmark average for this metric
+    </div>
   `;
 
-  // DAU multi-line
-  const dauDS=expIds.map((id,i)=>{
-    const dau=allData[id].standard.dau?.series?.total?.filter(d=>d.value>0)||[];
-    return{id,dau,color:EXP_COLORS[i%EXP_COLORS.length]};
-  }).filter(d=>d.dau.length);
-  if(dauDS.length){
-    const allDates=[...new Set(dauDS.flatMap(d=>d.dau.map(p=>p.date)))].sort();
-    mkChart('c-cmp-dau','line',allDates.map(fmtD),dauDS.map(d=>{const map=Object.fromEntries(d.dau.map(p=>[p.date,p.value]));return mkDs(shortId(d.id),allDates.map(dt=>map[dt]??null),d.color,{fill:false});}));
+  // Wire experience pills
+  const selectedExps=new Set(expIds);
+  expIds.forEach((id,i)=>{
+    const pill=document.getElementById(`cmp-exp-pill-${i}`);
+    if(!pill)return;
+    pill.addEventListener('click',()=>{
+      if(selectedExps.has(id)&&selectedExps.size>1){
+        selectedExps.delete(id);pill.classList.remove('active');pill.style.background='';
+      } else if(!selectedExps.has(id)){
+        selectedExps.add(id);pill.classList.add('active');pill.style.background=colorVars[i%6]+'18';
+      }
+      redraw();
+    });
+  });
+
+  // Chart type toggle
+  let chartType='line';
+  const lineBtn=document.getElementById('cmp-btn-line');
+  const barBtn=document.getElementById('cmp-btn-bar');
+  lineBtn.addEventListener('click',()=>{chartType='line';lineBtn.classList.add('active');barBtn.classList.remove('active');redraw();});
+  barBtn.addEventListener('click',()=>{chartType='bar';barBtn.classList.add('active');lineBtn.classList.remove('active');redraw();});
+
+  let mainChart=null;
+  const metricSel=document.getElementById('cmp-sum-metric');
+
+  function redraw(){
+    const key=metricSel?metricSel.value:(availMetrics[0]?.key||'dau');
+    const m=ALL_METRICS.find(x=>x.key===key)||{};
+    const selIds=expIds.filter(id=>selectedExps.has(id));
+    const ds=selIds.map(id=>{
+      const i=expIds.indexOf(id);
+      const data=allData[id].standard[key]?.series?.total?.filter(d=>d.value>0)||[];
+      return{id,data,color:EXP_COLORS[i%EXP_COLORS.length]};
+    }).filter(d=>d.data.length);
+
+    // Benchmark — first experience that has it for this metric
+    let benchData=null;
+    for(const id of selIds){
+      const bd=allData[id].standard[key]?.series?.benchmark?.filter(d=>d.value>0)||[];
+      if(bd.length){benchData=bd;break;}
+    }
+
+    // Update chart card title and desc via the DOM
+    const card=document.querySelector('#page-cmp_summary .chart-card:last-of-type');
+    if(card){
+      const titleEl=card.querySelector('.chart-title');
+      const descEl=card.querySelector('.chart-desc');
+      const expLabel=selIds.length===expIds.length?'All Experiences':selIds.map(shortId).join(', ');
+      if(titleEl)titleEl.textContent=`${m.label||key} — ${expLabel}`;
+      if(descEl)descEl.textContent=chartType==='line'?'TREND OVER TIME · ONE LINE PER EXPERIENCE'+(benchData?' · DASHED = ROBLOX BENCHMARK':''):'PERIOD AVERAGE PER EXPERIENCE'+(benchData?' · DASHED = ROBLOX BENCHMARK AVG':'');
+    }
+    const benchNote=document.getElementById('cmp-sum-bench-note');
+    if(benchNote)benchNote.style.display=benchData?'block':'none';
+
+    if(mainChart)mainChart.destroy();
+    if(!ds.length)return;
+
+    const chartOpts=m.pct?{pct:true}:{};
+
+    if(chartType==='line'){
+      // Time series — one line per experience + optional benchmark dashed
+      const allDates=[...new Set(ds.flatMap(d=>d.data.map(p=>p.date)))].sort();
+      const datasets=ds.map(d=>{
+        const map=Object.fromEntries(d.data.map(p=>[p.date,p.value]));
+        return mkDs(shortId(d.id),allDates.map(dt=>map[dt]??null),d.color,{fill:false});
+      });
+      if(benchData){
+        const bMap=Object.fromEntries(benchData.map(p=>[p.date,p.value]));
+        datasets.push(mkDs('Benchmark',allDates.map(dt=>bMap[dt]??null),P.muted,{fill:false,dash:[6,4],pr:0}));
+      }
+      mainChart=mkChart('c-cmp-sum-main','line',allDates.map(fmtD),datasets,chartOpts);
+    } else {
+      // Bar — period average per experience so it's a clean single-bar comparison
+      const avgFn=data=>+(data.reduce((a,b)=>a+b.value,0)/data.length).toFixed(m.pct?4:2);
+      const barLabels=ds.map(d=>shortId(d.id));
+      const barValues=ds.map(d=>avgFn(d.data));
+      const datasets=[{label:'Period Average',data:barValues,backgroundColor:ds.map(d=>d.color+'cc'),borderColor:ds.map(d=>d.color),borderWidth:1,borderRadius:3}];
+      if(benchData){
+        const benchAvg=avgFn(benchData);
+        // Render benchmark as a flat line overlay across all bars
+        datasets.push({label:'Benchmark Avg',data:barLabels.map(()=>benchAvg),backgroundColor:'transparent',borderColor:P.muted,borderWidth:2,borderDash:[6,4],type:'line',pointRadius:0,fill:false,tension:0});
+      }
+      // For mixed chart (bar + line benchmark) we need to create directly
+      const ctx=document.getElementById('c-cmp-sum-main');
+      if(ctx){
+        mainChart=new Chart(ctx,{type:'bar',data:{labels:barLabels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:P.muted,font:{family:'JetBrains Mono',size:10},boxWidth:12}},tooltip:{backgroundColor:'#13151f',borderColor:'#1e2135',borderWidth:1,titleColor:'#e8eaf6',bodyColor:P.muted,titleFont:{family:'Syne',size:12,weight:'700'},bodyFont:{family:'JetBrains Mono',size:11},callbacks:{label:ctx=>{const v=ctx.parsed.y;return m.pct?`  ${ctx.dataset.label}: ${(v*100).toFixed(1)}%`:`  ${ctx.dataset.label}: ${fmtN(v)}`;}}},},scales:{x:{ticks:{color:P.muted,font:{family:'JetBrains Mono',size:10}},grid:{color:'#1e2135'}},y:{ticks:{color:P.muted,font:{family:'JetBrains Mono',size:10},callback:v=>m.pct?(v*100).toFixed(0)+'%':fmtN(v)},grid:{color:'#1e2135'},beginAtZero:true}}}});
+      }
+    }
   }
 
-  // Event comparison section
-  if(allEventNames.length){
-    let evLine=null,evBar=null;
-    function drawSumEv(eventName){
-      const ds=expIds.map((id,i)=>{
-        const e=allData[id].custom[eventName];
-        if(!e||!e.total||!e.total.length)return null;
-        return{id,data:e.total,color:EXP_COLORS[i%EXP_COLORS.length]};
-      }).filter(Boolean);
-      if(evLine)evLine.destroy();if(evBar)evBar.destroy();
-      if(!ds.length)return;
-      const allDates=[...new Set(ds.flatMap(d=>d.data.map(p=>p.date)))].sort();
-      evLine=mkChart('c-cmp-sum-line','line',allDates.map(fmtD),ds.map(d=>{const map=Object.fromEntries(d.data.map(p=>[p.date,p.value]));return mkDs(shortId(d.id),allDates.map(dt=>map[dt]??null),d.color,{fill:false});}));
-      evBar=mkChart('c-cmp-sum-bar','bar',ds.map(d=>shortId(d.id)),[{label:'All-Time Total',data:ds.map(d=>sumArr(d.data)),backgroundColor:ds.map(d=>d.color+'cc'),borderColor:ds.map(d=>d.color),borderWidth:1}]);
-    }
-    const sel=document.getElementById('cmp-sum-ev');
-    if(sel){drawSumEv(allEventNames[0]);sel.addEventListener('change',()=>drawSumEv(sel.value));}
-  }
+  if(metricSel)metricSel.addEventListener('change',redraw);
+  redraw();
 }
 
 // ── EVENT COMPARISON ──
