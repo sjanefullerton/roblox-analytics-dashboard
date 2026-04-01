@@ -168,6 +168,32 @@ header{padding:32px 48px 24px;border-bottom:1px solid var(--border);display:flex
 const P={blue:'#5b8cff',pink:'#ff5b8c',green:'#5bffb8',yellow:'#ffc85b',purple:'#b05bff',cyan:'#5be0ff',orange:'#ff8c5b',muted:'#6b7094',teal:'#5bffe0',lime:'#b8ff5b',rose:'#ff5bb8'};
 const PALETTE=[P.blue,P.green,P.yellow,P.pink,P.purple,P.cyan,P.orange,P.teal,P.lime,P.rose,P.muted];
 
+// ── ALIEN ATTACK CONFIG ──
+// To add another experience with full progression×pressure support,
+// add its ID to DEEP_ANALYSIS_IDS and define its stat config below.
+const ALIEN_ATTACK_ID='7309522962';
+const DEEP_ANALYSIS_IDS=[ALIEN_ATTACK_ID];
+
+// Key learning stats shown in Session Learning and Game Balance tabs.
+// event: matches the custom event name in the CSV export.
+// label: friendly display name.
+// category: grouping label.
+// failureSignal: true = rising value is bad (player is failing), false = rising is good.
+const SESSION_LEARNING_STATS=[
+  {event:'TurretKills',        label:'Turret Kills',         category:'Combat',    failureSignal:false},
+  {event:'TotalHayFedToCow',   label:'Hay Fed to Cow',       category:'Objective', failureSignal:false},
+  {event:'FarthestCowMovedPercent', label:'Farthest Cow Moved', category:'Objective', failureSignal:true},
+  {event:'TreesHarvested',     label:'Trees Harvested',      category:'Farming',   failureSignal:false},
+  {event:'ResourceRemaining_gloop', label:'Gloop Remaining', category:'Resources', failureSignal:false},
+  {event:'NightSurvived',      label:'Nights Survived',      category:'Outcome',   failureSignal:false},
+  {event:'AliensStartedCarryingCow', label:'Aliens Carrying Cow', category:'Combat', failureSignal:true},
+];
+const SESSION_KEYS=['Session - 1','Session - 2','Session - >=3'];
+const SESSION_LABELS={'Session - 1':'1st Session','Session - 2':'2nd Session','Session - >=3':'3rd+ Session'};
+const SESSION_COLORS=[P.blue,P.green,P.yellow];
+const DIM_LABELS={night:'Night (Difficulty)',players:'Player Count (Group Size)',gun:'Weapon / Tool',reason:'Reason / Resource Spend',session:'Session #'};
+
+
 const fmtD=d=>d?d.slice(5):'';
 const fmtN=n=>{if(n===null||n===undefined)return'—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return Number.isInteger(n)?n.toString():n.toFixed(1);};
 const sumArr=arr=>arr.reduce((a,b)=>a+(b.value??b),0);
@@ -521,13 +547,18 @@ function renderTabs(){
   const hasCustom=Object.keys(D.custom).length>0;
 
   const tabs=[];
+  const isDeepAnalysis=DEEP_ANALYSIS_IDS.includes(currentExpId);
+  const hasSessionDim=dims.session&&dims.session.length>0;
+  const hasOtherDim=(dims.night&&dims.night.length>0)||(dims.players&&dims.players.length>0)||(dims.gun&&dims.gun.length>0)||(dims.reason&&dims.reason.length>0);
   tabs.push({id:'overview',label:'Overview'});
   if(hasCustom) tabs.push({id:'totals',label:'Event Trends'});
   if(dims.night&&dims.night.length>0) tabs.push({id:'night',label:'Level / Night'});
-  if(dims.session&&dims.session.length>0) tabs.push({id:'onboarding',label:'Session Curve'});
+  if(isDeepAnalysis&&hasSessionDim) tabs.push({id:'session_learning',label:'Session Learning'});
+  if(hasSessionDim) tabs.push({id:'onboarding',label:'Session Curve'});
   if(dims.players&&dims.players.length>0) tabs.push({id:'balance',label:'Player Count'});
   if(dims.gun&&dims.gun.length>0) tabs.push({id:'weapons',label:'Weapons & Tools'});
   if(dims.reason&&dims.reason.length>0) tabs.push({id:'reason',label:'Reason Breakdown'});
+  if(isDeepAnalysis&&hasSessionDim&&hasOtherDim) tabs.push({id:'game_balance',label:'Game Balance'});
   tabs.push({id:'players',label:'Players'});
   tabs.push({id:'stats',label:'Game Stats'});
 
@@ -578,6 +609,8 @@ function buildPage(name,D){
   else if(name==='players')renderPlayers(el,D);
   else if(name==='stats')renderStats(el,D);
   else if(name==='reason')renderReason(el,D);
+  else if(name==='session_learning')renderSessionLearning(el,D);
+  else if(name==='game_balance')renderGameBalance(el,D);
 }
 
 // ── OVERVIEW TAB ──
@@ -1373,6 +1406,435 @@ function renderCmpStats(el){
   if(mSel){drawStatsChart('dau');mSel.addEventListener('change',()=>drawStatsChart(mSel.value));}
   const eSel=document.getElementById('cmp-stats-evsel');
   if(eSel&&allEventNames.length){drawEvChart(allEventNames[0]);eSel.addEventListener('change',()=>drawEvChart(eSel.value));}
+}
+
+// ══════════════════════════════════════════════════════════════
+// SESSION LEARNING TAB
+// ══════════════════════════════════════════════════════════════
+
+// Returns {date→value} map for a given event+sessionKey, or {}
+function getSessionSeries(D,eventName,sessionKey){
+  const ev=D.custom[eventName];
+  if(!ev||!ev.dimensions||!ev.dimensions.session)return{};
+  const arr=ev.dimensions.session[sessionKey]||[];
+  const map={};
+  arr.forEach(d=>{map[d.date]=d.value;});
+  return map;
+}
+
+// Build normalized series: divide each session's daily value by NightSurvived for same session
+function buildNormSeries(D,eventName){
+  const result={};
+  SESSION_KEYS.forEach(sk=>{
+    const evMap=getSessionSeries(D,eventName,sk);
+    const nsMap=getSessionSeries(D,'NightSurvived',sk);
+    const dates=Object.keys(evMap).sort();
+    result[sk]=dates.map(date=>{
+      const ns=nsMap[date]||null;
+      const v=evMap[date]??null;
+      return{date,value:(v!==null&&ns&&ns>0)?+(v/ns).toFixed(3):null};
+    });
+  });
+  return result;
+}
+
+// Build raw series object keyed by session key
+function buildRawSeries(D,eventName){
+  const result={};
+  SESSION_KEYS.forEach(sk=>{
+    const evMap=getSessionSeries(D,eventName,sk);
+    const dates=Object.keys(evMap).sort();
+    result[sk]=dates.map(date=>({date,value:evMap[date]??null}));
+  });
+  return result;
+}
+
+// Compute per-key daily average
+function avgSeries(arr){
+  if(!arr||!arr.length)return 0;
+  const vals=arr.map(d=>d.value).filter(v=>v!==null);
+  return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+}
+
+// Build learning rate series: S2/S1 ratio per date
+function buildLearningRateSeries(s1Arr,s2Arr){
+  const s1Map={};s1Arr.forEach(d=>{s1Map[d.date]=d.value;});
+  const dates=s2Arr.map(d=>d.date).filter(d=>s1Map[d]&&s1Map[d]>0);
+  return dates.map(date=>({date,value:+(s2Arr.find(d=>d.date===date).value/s1Map[date]).toFixed(3)}));
+}
+
+// Render a two-chart session block (trend lines + learning rate) into a container element
+// chartSuffix: unique string to avoid canvas ID collisions
+function renderSessionCharts(container,seriesData,chartSuffix,statLabel){
+  const allDates=[...new Set(SESSION_KEYS.flatMap(sk=>(seriesData[sk]||[]).map(d=>d.date)))].sort();
+  const s1=seriesData['Session - 1']||[];
+  const s2=seriesData['Session - 2']||[];
+  const lrSeries=buildLearningRateSeries(s1,s2);
+
+  container.innerHTML=`
+    <div class="chart-grid full"><div class="chart-card">
+      <div class="chart-title">${statLabel} — Session Trend Over Time</div>
+      <div class="chart-desc">S1 / S2 / S3+ DAILY TOTALS — DOES THE GAP CHANGE AFTER ONBOARDING UPDATES?</div>
+      <div class="chart-wrap tall"><canvas id="c-sl-trend-${chartSuffix}"></canvas></div>
+    </div></div>
+    <div class="chart-grid full"><div class="chart-card">
+      <div class="chart-title">${statLabel} — Learning Rate (S2 ÷ S1) Over Time</div>
+      <div class="chart-desc">RATIO > 1 MEANS 2ND-SESSION PLAYERS OUTPERFORM 1ST-SESSION — RISING TREND = ONBOARDING IS IMPROVING</div>
+      <div class="chart-wrap"><canvas id="c-sl-lr-${chartSuffix}"></canvas></div>
+    </div></div>
+  `;
+  setTimeout(()=>{
+    mkChart(`c-sl-trend-${chartSuffix}`,'line',allDates.map(fmtD),SESSION_KEYS.map((sk,i)=>{
+      const map=Object.fromEntries((seriesData[sk]||[]).map(d=>[d.date,d.value]));
+      return mkDs(SESSION_LABELS[sk],allDates.map(d=>map[d]??null),SESSION_COLORS[i],{fill:false});
+    }));
+    if(lrSeries.length>1){
+      mkChart(`c-sl-lr-${chartSuffix}`,'line',lrSeries.map(d=>fmtD(d.date)),[
+        mkDs('S2 ÷ S1 Ratio',lrSeries.map(d=>d.value),P.cyan,{fill:false,pr:2}),
+        {label:'Baseline (1.0)',data:lrSeries.map(()=>1),borderColor:P.muted,borderWidth:1,borderDash:[4,4],pointRadius:0,tension:0,fill:false},
+      ]);
+    }else{
+      document.getElementById(`c-sl-lr-${chartSuffix}`).parentElement.innerHTML='<div style="padding:24px;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--muted)">Not enough data to compute learning rate trend yet.</div>';
+    }
+  },0);
+}
+
+// Render the drill-down view (replaces tab innerHTML)
+function renderSlDrillDown(el,D,stat,normalized){
+  const availDims=Object.keys(D.custom[stat.event]?.dimensions||{}).filter(d=>d!=='session');
+  const seriesData=normalized?buildNormSeries(D,stat.event):buildRawSeries(D,stat.event);
+  const normLabel=normalized?' (per player-night)':'';
+
+  let dimChartHtml='';
+  let activeDim=availDims[0]||null;
+
+  el.innerHTML=`
+    <div style="margin-bottom:24px;">
+      <button id="sl-back-btn" style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:8px 16px;cursor:pointer;">← Back to Overview</button>
+    </div>
+    <div class="insight"><strong>${stat.label}${normLabel}</strong> — Session learning curve and onboarding trend.${stat.failureSignal?' ⚠️ This is a failure signal — lower values across sessions indicate improvement.':' Rising values across sessions indicate players are learning.'}</div>
+    <div id="sl-trend-container"></div>
+    ${availDims.length?`
+      ${sec('Breakdown by Pressure Dimension')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;" id="sl-dim-pills">
+        ${availDims.map(d=>`<button class="pill${d===activeDim?' active':''}" data-dim="${d}">${DIM_LABELS[d]||d}</button>`).join('')}
+      </div>
+      <div id="sl-dim-charts"></div>
+    `:''}
+  `;
+
+  document.getElementById('sl-back-btn').onclick=()=>renderSessionLearning(el,D);
+  renderSessionCharts(document.getElementById('sl-trend-container'),seriesData,stat.event+'_dd',stat.label+normLabel);
+
+  if(availDims.length){
+    const dimPills=document.getElementById('sl-dim-pills');
+    const dimChartContainer=document.getElementById('sl-dim-charts');
+
+    function loadDimCharts(dim){
+      activeDim=dim;
+      dimPills.querySelectorAll('.pill').forEach(p=>p.classList.toggle('active',p.dataset.dim===dim));
+      const ev=D.custom[stat.event];
+      const dimData=ev?.dimensions?.[dim]||{};
+      const keys=sortDimKeys(Object.keys(dimData),dim);
+      const allDates=[...new Set(keys.flatMap(k=>(dimData[k]||[]).map(d=>d.date)))].sort();
+      const totals=keys.map(k=>sumArr(dimData[k]||[]));
+      const bid=`c-sl-dim-bar-${stat.event}-${dim}`;
+      const lid=`c-sl-dim-line-${stat.event}-${dim}`;
+      dimChartContainer.innerHTML=`
+        <div class="chart-grid full"><div class="chart-card">
+          <div class="chart-title">${stat.label} — All-Time Total by ${DIM_LABELS[dim]||dim}</div>
+          <div class="chart-desc">ALL-TIME TOTALS PER BUCKET</div>
+          <div class="chart-wrap tall"><canvas id="${bid}"></canvas></div>
+        </div></div>
+        <div class="chart-grid full"><div class="chart-card">
+          <div class="chart-title">${stat.label} — Daily Trend by ${DIM_LABELS[dim]||dim}</div>
+          <div class="chart-desc">HOW EACH BUCKET CHANGED OVER TIME</div>
+          <div class="chart-wrap tall"><canvas id="${lid}"></canvas></div>
+        </div></div>
+      `;
+      setTimeout(()=>{
+        mkChart(bid,'bar',keys.map(k=>fmtKey(k)),[{label:'All-Time Total',data:totals,backgroundColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]+'cc'),borderColor:keys.map((_,i)=>PALETTE[i%PALETTE.length]),borderWidth:1}]);
+        mkChart(lid,'line',allDates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries((dimData[k]||[]).map(d=>[d.date,d.value]));return mkDs(fmtKey(k),allDates.map(d=>map[d]??null),PALETTE[i%PALETTE.length],{fill:false});}));
+      },0);
+    }
+
+    dimPills.querySelectorAll('.pill').forEach(p=>p.onclick=()=>loadDimCharts(p.dataset.dim));
+    if(activeDim)loadDimCharts(activeDim);
+  }
+}
+
+// Main render for Session Learning tab
+function renderSessionLearning(el,D){
+  const availStats=SESSION_LEARNING_STATS.filter(s=>D.custom[s.event]?.dimensions?.session);
+  if(!availStats.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No session breakdown data found for learning stats.</div>';return;}
+
+  let normalized=false;
+  const hasNightSurvived=!!(D.custom['NightSurvived']?.dimensions?.session);
+
+  // Build snapshot card values
+  function getSnapshotVals(stat,norm){
+    const series=norm?buildNormSeries(D,stat.event):buildRawSeries(D,stat.event);
+    return SESSION_KEYS.map(sk=>{
+      const arr=series[sk]||[];
+      return arr.length?+(avgSeries(arr)).toFixed(norm?2:0):null;
+    });
+  }
+
+  function pctChange(a,b){
+    if(!a||!b||a===0)return null;
+    const p=Math.round((b-a)/a*100);
+    return(p>=0?'+':'')+p+'%';
+  }
+
+  function cardColor(stat,s1,s2){
+    if(s1===null||s2===null)return P.muted;
+    const improving=stat.failureSignal?(s2<s1):(s2>s1);
+    return improving?P.green:P.pink;
+  }
+
+  function buildCards(norm){
+    return availStats.map((stat,i)=>{
+      const vals=getSnapshotVals(stat,norm);
+      const [v1,v2,v3]=vals;
+      const col=cardColor(stat,v1,v2);
+      const p21=pctChange(v1,v2);
+      const p31=pctChange(v1,v3);
+      const fmt=n=>n===null?'—':norm?n.toFixed(2):fmtN(n);
+      return `
+        <div class="chart-card sl-stat-card" data-stat="${stat.event}" style="cursor:pointer;border-color:${col}22;position:relative;transition:border-color .2s,box-shadow .2s;">
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:${col};border-radius:2px 2px 0 0;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+            <div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:2px;">${stat.label}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.06em;">${stat.category}${stat.failureSignal?' · FAILURE SIGNAL':''}</div>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);background:var(--border);border-radius:3px;padding:3px 7px;">CLICK TO DRILL DOWN</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">
+            ${SESSION_KEYS.map((sk,j)=>`
+              <div style="text-align:center;">
+                <div style="font-size:18px;font-weight:800;color:${SESSION_COLORS[j]};letter-spacing:-.03em;">${fmt(vals[j])}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;">${SESSION_LABELS[sk]}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;border-top:1px solid var(--border);padding-top:8px;">
+            <span style="color:var(--muted);">S2 vs S1:</span>
+            <span style="color:${p21&&p21.startsWith('-')!==stat.failureSignal?P.green:P.pink};font-weight:700;">${p21||'—'}</span>
+            <span style="color:var(--muted);margin-left:8px;">S3+ vs S1:</span>
+            <span style="color:${p31&&p31.startsWith('-')!==stat.failureSignal?P.green:P.pink};font-weight:700;">${p31||'—'}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Selected stat for trend charts (default: first stat)
+  let selectedStat=availStats[0];
+
+  function buildTrendSection(norm){
+    const seriesData=norm?buildNormSeries(D,selectedStat.event):buildRawSeries(D,selectedStat.event);
+    const container=document.getElementById('sl-trend-section');
+    if(container)renderSessionCharts(container,seriesData,'main_'+selectedStat.event,selectedStat.label+(norm?' (per player-night)':''));
+  }
+
+  const normToggle=hasNightSurvived?`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">View:</span>
+      <button id="sl-raw-btn" class="pill active">Raw Totals</button>
+      <button id="sl-norm-btn" class="pill">Normalized (per player-night)</button>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);">Normalized divides by NightSurvived per session to account for S1 having ~6× more players</span>
+    </div>`:'';
+
+  el.innerHTML=`
+    <div class="insight"><strong>Session Learning</strong> — How well are players learning each mechanic over successive sessions? Cards show average values per session group. Green border = players are improving. Click any card to drill into trends and dimension breakdowns. ${hasNightSurvived?'Toggle <em>Normalized</em> to correct for S1 having far more players than S3+.':''}</div>
+    ${normToggle}
+    ${sec('Key Learning Metrics — Average Per Session Group')}
+    <div class="chart-grid thirds" id="sl-cards-grid" style="margin-bottom:32px;"></div>
+    ${sec('Trend Over Time — Click a Metric Card to Change')}
+    <div id="sl-trend-section"></div>
+  `;
+
+  document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized);
+
+  // Wire card clicks
+  function wireCards(){
+    document.querySelectorAll('.sl-stat-card').forEach(card=>{
+      card.onmouseenter=()=>{card.style.boxShadow='0 0 20px rgba(91,140,255,.15)';};
+      card.onmouseleave=()=>{card.style.boxShadow='';};
+      card.onclick=()=>renderSlDrillDown(el,D,availStats.find(s=>s.event===card.dataset.stat),normalized);
+    });
+  }
+  wireCards();
+  buildTrendSection(normalized);
+
+  if(hasNightSurvived){
+    document.getElementById('sl-raw-btn').onclick=()=>{
+      normalized=false;
+      document.getElementById('sl-raw-btn').classList.add('active');
+      document.getElementById('sl-norm-btn').classList.remove('active');
+      document.getElementById('sl-cards-grid').innerHTML=buildCards(false);
+      wireCards();
+      buildTrendSection(false);
+    };
+    document.getElementById('sl-norm-btn').onclick=()=>{
+      normalized=true;
+      document.getElementById('sl-norm-btn').classList.add('active');
+      document.getElementById('sl-raw-btn').classList.remove('active');
+      document.getElementById('sl-cards-grid').innerHTML=buildCards(true);
+      wireCards();
+      buildTrendSection(true);
+    };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// GAME BALANCE TAB
+// ══════════════════════════════════════════════════════════════
+
+function renderGameBalance(el,D){
+  const availStats=SESSION_LEARNING_STATS.filter(s=>D.custom[s.event]?.dimensions?.session);
+  if(!availStats.length){el.innerHTML='<div style="padding:40px;font-family:JetBrains Mono,monospace;color:var(--muted)">No session breakdown data found.</div>';return;}
+
+  // Get all pressure dimensions (everything except session)
+  const pressureDims=[...new Set(
+    availStats.flatMap(s=>Object.keys(D.custom[s.event]?.dimensions||{}).filter(d=>d!=='session'))
+  )];
+
+  let activePressureDim=null; // null = session view (default)
+  let activeStatEvent=null;   // null = overview grid
+
+  // ── PRESSURE DIMENSION PICKER ──
+  function dimPillsHtml(){
+    return `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;">Pressure Lens:</span>
+        <button class="pill gb-dim-pill${activePressureDim===null?' active':''}" data-dim="null">Session # (Learning)</button>
+        ${pressureDims.map(d=>`<button class="pill gb-dim-pill${activePressureDim===d?' active':''}" data-dim="${d}">${DIM_LABELS[d]||d}</button>`).join('')}
+      </div>`;
+  }
+
+  // ── RENDER A STAT MINI-CARD IN THE GRID ──
+  function statMiniCard(stat,dim){
+    const ev=D.custom[stat.event];
+    if(!ev)return '';
+    const dimKey=dim||'session';
+    const dimData=ev.dimensions?.[dimKey]||{};
+    const keys=sortDimKeys(Object.keys(dimData),dimKey);
+    if(!keys.length)return '';
+    const totals=keys.map(k=>sumArr(dimData[k]||[]));
+    const maxVal=Math.max(...totals.filter(v=>v>0))||1;
+    const barColor=dim?PALETTE[pressureDims.indexOf(dim)%PALETTE.length]:P.blue;
+    const bars=keys.map((k,i)=>{
+      const pct=Math.round((totals[i]/maxVal)*100);
+      const col=dim?PALETTE[i%PALETTE.length]:SESSION_COLORS[i]||PALETTE[i];
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fmtKey(k)}</div>
+        <div style="flex:1;background:var(--border);border-radius:2px;height:8px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${col};border-radius:2px;transition:width .3s;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text);width:36px;text-align:right;">${fmtN(totals[i])}</div>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="chart-card gb-stat-card" data-stat="${stat.event}" style="cursor:pointer;transition:border-color .2s,box-shadow .2s;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div>
+            <div style="font-size:12px;font-weight:700;">${stat.label}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.06em;">${stat.category}${stat.failureSignal?' · FAILURE SIGNAL':''}</div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);background:var(--border);border-radius:3px;padding:3px 6px;">DRILL DOWN ↗</div>
+        </div>
+        ${bars}
+      </div>`;
+  }
+
+  // ── DRILL-DOWN VIEW ──
+  function renderGbDrillDown(stat){
+    activeStatEvent=stat.event;
+    const ev=D.custom[stat.event];
+    const availDimsForStat=['session',...Object.keys(ev?.dimensions||{}).filter(d=>d!=='session')];
+    let activeDrillDim='session';
+
+    function renderDrillCharts(dim){
+      activeDrillDim=dim;
+      document.querySelectorAll('.gb-drill-dim-pill').forEach(p=>p.classList.toggle('active',p.dataset.dim===dim));
+      const dimData=ev?.dimensions?.[dim]||{};
+      const keys=sortDimKeys(Object.keys(dimData),dim);
+      const allDates=[...new Set(keys.flatMap(k=>(dimData[k]||[]).map(d=>d.date)))].sort();
+      const totals=keys.map(k=>sumArr(dimData[k]||[]));
+      const bid=`c-gb-bar-${stat.event}-${dim}`;
+      const lid=`c-gb-line-${stat.event}-${dim}`;
+      document.getElementById('gb-drill-charts').innerHTML=`
+        <div class="chart-grid full"><div class="chart-card">
+          <div class="chart-title">${stat.label} — All-Time Total by ${DIM_LABELS[dim]||dim}</div>
+          <div class="chart-desc">ALL-TIME TOTALS PER BUCKET — ${dim==='session'?'RISING S1→S2→S3+ MEANS PLAYERS ARE LEARNING':'PRESSURE CONTEXT BREAKDOWN'}</div>
+          <div class="chart-wrap tall"><canvas id="${bid}"></canvas></div>
+        </div></div>
+        <div class="chart-grid full"><div class="chart-card">
+          <div class="chart-title">${stat.label} — Daily Trend by ${DIM_LABELS[dim]||dim}</div>
+          <div class="chart-desc">HOW EACH BUCKET CHANGED OVER TIME</div>
+          <div class="chart-wrap tall"><canvas id="${lid}"></canvas></div>
+        </div></div>
+      `;
+      setTimeout(()=>{
+        const sessionColors=dim==='session'?SESSION_COLORS:null;
+        mkChart(bid,'bar',keys.map(k=>fmtKey(k)),[{label:'All-Time Total',data:totals,backgroundColor:keys.map((_,i)=>(sessionColors?sessionColors[i]:PALETTE[i%PALETTE.length])+'cc'),borderColor:keys.map((_,i)=>sessionColors?sessionColors[i]:PALETTE[i%PALETTE.length]),borderWidth:1}]);
+        mkChart(lid,'line',allDates.map(fmtD),keys.map((k,i)=>{const map=Object.fromEntries((dimData[k]||[]).map(d=>[d.date,d.value]));return mkDs(fmtKey(k),allDates.map(d=>map[d]??null),sessionColors?sessionColors[i]:PALETTE[i%PALETTE.length],{fill:false});}));
+      },0);
+    }
+
+    el.innerHTML=`
+      <div style="margin-bottom:24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button id="gb-back-btn" style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:none;border:1px solid var(--border);border-radius:4px;padding:8px 16px;cursor:pointer;">← Back to Overview</button>
+        <div style="font-size:15px;font-weight:700;">${stat.label}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);">${stat.category}${stat.failureSignal?' · FAILURE SIGNAL — lower values = better':''}</div>
+      </div>
+      <div class="insight"><strong>Progression × Pressure Analysis: ${stat.label}</strong> — Use the dimension picker to see how this stat behaves across different pressure contexts. Session # shows learning progression. Night shows difficulty scaling. Player Count shows solo vs group dynamics.</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">Dimension:</span>
+        ${availDimsForStat.map(d=>`<button class="pill gb-drill-dim-pill${d==='session'?' active':''}" data-dim="${d}">${DIM_LABELS[d]||d}</button>`).join('')}
+      </div>
+      <div id="gb-drill-charts"></div>
+    `;
+    document.getElementById('gb-back-btn').onclick=()=>{activeStatEvent=null;renderGameBalance(el,D);};
+    document.querySelectorAll('.gb-drill-dim-pill').forEach(p=>p.onclick=()=>renderDrillCharts(p.dataset.dim));
+    renderDrillCharts('session');
+  }
+
+  // ── MAIN OVERVIEW GRID ──
+  function renderOverviewGrid(){
+    const dim=activePressureDim;
+    const statsForDim=dim
+      ?availStats.filter(s=>Object.keys(D.custom[s.event]?.dimensions||{}).includes(dim))
+      :availStats;
+
+    el.innerHTML=`
+      <div class="insight"><strong>Game Balance — Progression × Pressure</strong> — Each card shows a key metric split by the selected pressure lens. Default is Session # (learning progression). Switch lens to see how the same stats respond to difficulty scaling (Night), group size (Player Count), or resource behaviour (Reason). Click any card for full bar + trend charts with all dimensions.</div>
+      ${dimPillsHtml()}
+      ${sec(dim?`Stats split by ${DIM_LABELS[dim]||dim}`:'Key Metrics — Session Progression (Learning Signal)')}
+      <div class="chart-grid thirds" id="gb-grid"></div>
+    `;
+
+    document.getElementById('gb-grid').innerHTML=statsForDim.map(s=>statMiniCard(s,dim)).join('');
+
+    // Wire pills
+    document.querySelectorAll('.gb-dim-pill').forEach(pill=>{
+      pill.onclick=()=>{
+        activePressureDim=pill.dataset.dim==='null'?null:pill.dataset.dim;
+        renderOverviewGrid();
+      };
+    });
+
+    // Wire card clicks
+    document.querySelectorAll('.gb-stat-card').forEach(card=>{
+      card.onmouseenter=()=>{card.style.boxShadow='0 0 20px rgba(91,140,255,.15)';card.style.borderColor='var(--accent)';};
+      card.onmouseleave=()=>{card.style.boxShadow='';card.style.borderColor='';};
+      card.onclick=()=>renderGbDrillDown(availStats.find(s=>s.event===card.dataset.stat));
+    });
+  }
+
+  renderOverviewGrid();
 }
 </script>
 </body>
