@@ -1624,7 +1624,7 @@ function renderSessionLearning(el,D){
     return improving?P.green:P.pink;
   }
 
-  function buildCards(norm){
+  function buildCards(norm,activeStat){
     return availStats.map((stat,i)=>{
       const vals=getSnapshotVals(stat,norm);
       const [v1,v2,v3]=vals;
@@ -1632,15 +1632,16 @@ function renderSessionLearning(el,D){
       const p21=pctChange(v1,v2);
       const p31=pctChange(v1,v3);
       const fmt=n=>n===null?'—':norm?n.toFixed(2):fmtN(n);
+      const isActive=activeStat&&activeStat.event===stat.event;
       return `
-        <div class="chart-card sl-stat-card" data-stat="${stat.event}" style="cursor:pointer;border-color:${col}22;position:relative;transition:border-color .2s,box-shadow .2s;">
+        <div class="chart-card sl-stat-card" data-stat="${stat.event}" style="cursor:pointer;border-color:${isActive?col:col+'22'};box-shadow:${isActive?'0 0 0 2px '+col+'55':''};position:relative;transition:border-color .2s,box-shadow .2s;">
           <div style="position:absolute;top:0;left:0;right:0;height:2px;background:${col};border-radius:2px 2px 0 0;"></div>
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
             <div>
               <div style="font-size:12px;font-weight:700;margin-bottom:2px;">${stat.label}</div>
               <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.06em;">${stat.category}${stat.failureSignal?' · FAILURE SIGNAL':''}</div>
             </div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);background:var(--border);border-radius:3px;padding:3px 7px;">CLICK TO DRILL DOWN</div>
+            <div class="sl-drill-btn" data-stat="${stat.event}" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);background:var(--border);border-radius:3px;padding:3px 7px;cursor:pointer;white-space:nowrap;">DRILL DOWN ↗</div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">
             ${SESSION_KEYS.map((sk,j)=>`
@@ -1686,14 +1687,25 @@ function renderSessionLearning(el,D){
     <div id="sl-trend-section"></div>
   `;
 
-  document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized);
+  document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized,selectedStat);
 
   // Wire card clicks
   function wireCards(){
     document.querySelectorAll('.sl-stat-card').forEach(card=>{
-      card.onmouseenter=()=>{card.style.boxShadow='0 0 20px rgba(91,140,255,.15)';};
-      card.onmouseleave=()=>{card.style.boxShadow='';};
-      card.onclick=()=>renderSlDrillDown(el,D,availStats.find(s=>s.event===card.dataset.stat),normalized);
+      card.onmouseenter=()=>{if(selectedStat&&selectedStat.event!==card.dataset.stat)card.style.boxShadow='0 0 20px rgba(91,140,255,.15)';};
+      card.onmouseleave=()=>{if(selectedStat&&selectedStat.event!==card.dataset.stat)card.style.boxShadow='';};
+      card.onclick=(e)=>{
+        // If clicking the drill-down button, go to drill-down view
+        if(e.target.classList.contains('sl-drill-btn')){
+          renderSlDrillDown(el,D,availStats.find(s=>s.event===e.target.dataset.stat),normalized);
+          return;
+        }
+        // Otherwise update the trend section
+        selectedStat=availStats.find(s=>s.event===card.dataset.stat);
+        document.getElementById('sl-cards-grid').innerHTML=buildCards(normalized,selectedStat);
+        wireCards();
+        buildTrendSection(normalized);
+      };
     });
   }
   wireCards();
@@ -1704,7 +1716,7 @@ function renderSessionLearning(el,D){
       normalized=false;
       document.getElementById('sl-raw-btn').classList.add('active');
       document.getElementById('sl-norm-btn').classList.remove('active');
-      document.getElementById('sl-cards-grid').innerHTML=buildCards(false);
+      document.getElementById('sl-cards-grid').innerHTML=buildCards(false,selectedStat);
       wireCards();
       buildTrendSection(false);
     };
@@ -1712,7 +1724,7 @@ function renderSessionLearning(el,D){
       normalized=true;
       document.getElementById('sl-norm-btn').classList.add('active');
       document.getElementById('sl-raw-btn').classList.remove('active');
-      document.getElementById('sl-cards-grid').innerHTML=buildCards(true);
+      document.getElementById('sl-cards-grid').innerHTML=buildCards(true,selectedStat);
       wireCards();
       buildTrendSection(true);
     };
